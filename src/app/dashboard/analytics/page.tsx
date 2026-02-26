@@ -3,28 +3,26 @@
 import { useState, useMemo } from "react";
 import Header from "@/components/header";
 import { useAuth } from "@/context/auth-context";
-import { labTests } from "@/data/mock-data";
+import { labTests, panels as seedPanels } from "@/data/mock-data";
 import { calculatePanelPrice, calculateAnalytics, PricingResult, AnalyticsResult } from "@/lib/pricing";
-
-const prebuiltPanels = [
-  { name: "Basic Panel", testIds: ["T-001", "T-002", "T-004"] },
-  { name: "Cardiac Panel", testIds: ["T-016", "T-017"] },
-  { name: "Metabolic + Thyroid", testIds: ["T-003", "T-005", "T-006"] },
-  { name: "Comprehensive", testIds: ["T-003", "T-010", "T-012", "T-005"] },
-];
 
 export default function AnalyticsPage() {
   const { orgId } = useAuth();
-  const orgTests = useMemo(() => labTests.filter((t) => t.orgId === (orgId || "org-1")), [orgId]);
+  const effectiveOrgId = orgId || "org-1";
+  const orgTests = useMemo(() => labTests.filter((t) => t.orgId === effectiveOrgId), [effectiveOrgId]);
+  const orgPanels = useMemo(() => seedPanels.filter((p) => p.orgId === effectiveOrgId), [effectiveOrgId]);
 
-  const [selectedPanel, setSelectedPanel] = useState(0);
+  const [selectedPanelId, setSelectedPanelId] = useState<string>(() => {
+    const first = seedPanels.find((p) => p.orgId === (orgId || "org-1"));
+    return first?.id ?? "";
+  });
   const [currentOverhead, setCurrentOverhead] = useState("2500");
   const [currentVolume, setCurrentVolume] = useState("50");
   const [futureOverhead, setFutureOverhead] = useState("3500");
   const [futureVolume, setFutureVolume] = useState("80");
 
-  const panel = prebuiltPanels[selectedPanel];
-  const panelTests = orgTests.filter((t) => panel.testIds.includes(t.id));
+  const panel = orgPanels.find((p) => p.id === selectedPanelId) ?? orgPanels[0];
+  const panelTests = panel ? orgTests.filter((t) => panel.testIds.includes(t.id)) : [];
   const pricingResult = useMemo(() => calculatePanelPrice(panelTests), [panelTests]);
 
   const analyticsResult = useMemo(() => {
@@ -45,22 +43,29 @@ export default function AnalyticsPage() {
           {/* Panel selector */}
           <div className="col-span-4 bg-surface-raised rounded-xl border border-border p-5">
             <h3 className="font-display font-semibold text-sm text-text-primary mb-4">Select Panel</h3>
-            <div className="space-y-2">
-              {prebuiltPanels.map((p, i) => (
-                <button
-                  key={i}
-                  onClick={() => setSelectedPanel(i)}
-                  className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
-                    selectedPanel === i
-                      ? "border-accent bg-accent-muted"
-                      : "border-border hover:border-border-strong"
-                  }`}
-                >
-                  <span className="text-sm font-body font-medium text-text-primary block">{p.name}</span>
-                  <span className="text-xs font-mono text-text-muted">{p.testIds.join(", ")}</span>
-                </button>
-              ))}
-            </div>
+            {orgPanels.length === 0 ? (
+              <div className="text-center py-6">
+                <p className="text-sm text-text-muted font-body mb-3">No panels defined yet.</p>
+                <a href="/dashboard/panels" className="text-sm font-body font-semibold text-accent hover:underline">Create a panel</a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {orgPanels.map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => setSelectedPanelId(p.id)}
+                    className={`w-full text-left px-4 py-3 rounded-lg border-2 transition-all ${
+                      selectedPanelId === p.id
+                        ? "border-accent bg-accent-muted"
+                        : "border-border hover:border-border-strong"
+                    }`}
+                  >
+                    <span className="text-sm font-body font-medium text-text-primary block">{p.name}</span>
+                    <span className="text-xs font-mono text-text-muted">{p.testIds.join(", ")}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Inputs */}

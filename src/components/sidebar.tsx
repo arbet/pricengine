@@ -38,6 +38,15 @@ const ChartIcon = (
   </svg>
 );
 
+const PanelIcon = (
+  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  </svg>
+);
+
 const AdminIcon = (
   <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
     <path d="M19 21v-2a4 4 0 00-4-4H9a4 4 0 00-4 4v2" strokeLinecap="round" strokeLinejoin="round" />
@@ -47,6 +56,7 @@ const AdminIcon = (
 
 const navItems: NavItem[] = [
   { label: "Test Management", href: "/dashboard/tests", icon: FlaskIcon, roles: ["lab_manager"] },
+  { label: "Panel Management", href: "/dashboard/panels", icon: PanelIcon, roles: ["lab_manager"] },
   { label: "Pricing Calculator", href: "/dashboard/calculator", icon: CalcIcon, roles: ["lab_manager", "lab_employee"] },
   { label: "Logs", href: "/dashboard/logs", icon: LogsIcon, roles: ["lab_manager"] },
   { label: "Analytics", href: "/dashboard/analytics", icon: ChartIcon, roles: ["lab_manager"] },
