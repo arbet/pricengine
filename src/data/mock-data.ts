@@ -21,6 +21,13 @@ export interface LabTest {
   orgId: string;
 }
 
+export interface Panel {
+  id: string;
+  name: string;
+  testIds: string[];
+  orgId: string;
+}
+
 export interface LogEntry {
   id: string;
   timestamp: string;
@@ -98,6 +105,17 @@ export const labTests: LabTest[] = [
   { id: "T-020", name: "Magnesium", reagentCost: 4.1, listPrice: 40.0, category: "Chemistry", orgId: "org-1" },
 ];
 
+export const panels: Panel[] = [
+  { id: "P-001", name: "Basic Panel", testIds: ["T-001", "T-002", "T-004"], orgId: "org-1" },
+  { id: "P-002", name: "Cardiac Panel", testIds: ["T-016", "T-017"], orgId: "org-1" },
+  { id: "P-003", name: "Metabolic + Thyroid", testIds: ["T-003", "T-005", "T-006"], orgId: "org-1" },
+  { id: "P-004", name: "Comprehensive", testIds: ["T-003", "T-010", "T-012", "T-005"], orgId: "org-1" },
+  { id: "P-005", name: "Wellness Panel", testIds: ["T-001", "T-004", "T-007", "T-015"], orgId: "org-2" },
+  { id: "P-006", name: "Diabetes Screen", testIds: ["T-006", "T-015", "T-019"], orgId: "org-2" },
+  { id: "P-007", name: "Anemia Panel", testIds: ["T-001", "T-009", "T-012", "T-018"], orgId: "org-3" },
+  { id: "P-008", name: "Thyroid + Metabolic", testIds: ["T-005", "T-003", "T-006"], orgId: "org-3" },
+];
+
 export const logEntries: LogEntry[] = [
   { id: "log-01", timestamp: "2026-02-25T14:32:00Z", panelTests: ["T-001", "T-002", "T-004"], finalPrice: 112.85, source: "calculator", orgId: "org-1" },
   { id: "log-02", timestamp: "2026-02-25T11:15:00Z", panelTests: ["T-016", "T-017"], finalPrice: 378.50, source: "api", orgId: "org-1" },
@@ -136,6 +154,10 @@ export function getLogsByOrg(orgId: string): LogEntry[] {
 
 export function getOrgById(orgId: string): Organization | undefined {
   return organizations.find((o) => o.id === orgId);
+}
+
+export function getPanelsByOrg(orgId: string): Panel[] {
+  return panels.filter((p) => p.orgId === orgId);
 }
 
 export function getRoleName(role: Role): string {
