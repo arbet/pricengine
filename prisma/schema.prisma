@@ -1,0 +1,120 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  super_admin
+  lab_manager
+  lab_employee
+}
+
+enum PricingSource {
+  calculator
+  api
+}
+
+model Organization {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  code                String   @unique
+  contactEmail        String?  @map("contact_email")
+  phone               String?
+  address             String?
+  discountFactor      Decimal  @default(0.5) @map("discount_factor") @db.Decimal(5, 3)
+  floorMultiplier     Decimal  @default(3.0) @map("floor_multiplier") @db.Decimal(5, 2)
+  marginalOverhead    Decimal  @default(5.0) @map("marginal_overhead") @db.Decimal(10, 2)
+  donationPerPanel    Decimal  @default(2.0) @map("donation_per_panel") @db.Decimal(10, 2)
+  revenueSharePerPanel Decimal @default(3.0) @map("revenue_share_per_panel") @db.Decimal(10, 2)
+  overheadCost        Decimal? @map("overhead_cost") @db.Decimal(10, 2)
+  panelsPerDay        Int?     @map("panels_per_day")
+  futureOverheadCost  Decimal? @map("future_overhead_cost") @db.Decimal(10, 2)
+  futurePanelsPerDay  Int?     @map("future_panels_per_day")
+  apiKey              String?  @unique @map("api_key")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  users       User[]
+  labTests    LabTest[]
+  panels      Panel[]
+  pricingLogs PricingLog[]
+
+  @@map("organizations")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         Role
+  orgId        String?  @map("org_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@map("users")
+}
+
+model LabTest {
+  id          String   @id @default(uuid())
+  testId      String   @map("test_id")
+  name        String
+  reagentCost Decimal  @map("reagent_cost") @db.Decimal(10, 2)
+  listPrice   Decimal  @map("list_price") @db.Decimal(10, 2)
+  category    String?
+  orgId       String   @map("org_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  panelTests   PanelTest[]
+
+  @@unique([testId, orgId])
+  @@map("lab_tests")
+}
+
+model Panel {
+  id        String   @id @default(uuid())
+  name      String
+  orgId     String   @map("org_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  panelTests   PanelTest[]
+
+  @@map("panels")
+}
+
+model PanelTest {
+  id      String @id @default(uuid())
+  panelId String @map("panel_id")
+  testId  String @map("test_id")
+
+  panel Panel   @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  test  LabTest @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@unique([panelId, testId])
+  @@map("panel_tests")
+}
+
+model PricingLog {
+  id             String        @id @default(uuid())
+  timestamp      DateTime      @default(now())
+  panelTestIds   String[]      @map("panel_test_ids")
+  panelTestNames String[]      @map("panel_test_names")
+  finalPrice     Decimal       @map("final_price") @db.Decimal(10, 2)
+  source         PricingSource
+  orgId          String        @map("org_id")
+
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+  @@index([timestamp])
+  @@map("pricing_logs")
+}

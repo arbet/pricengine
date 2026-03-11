@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.env
+.env.local
+
+/src/generated/prisma
+.env.production.local
+*.log
+dist
+build
+coverage
+src/generated/prisma
+test-results
+playwright-report
