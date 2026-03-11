@@ -10,6 +10,32 @@ services:
       POSTGRES_DB: pricengine_dev
     volumes:
       - pricengine_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: pricengine-app
+    working_dir: /app
+    command: sh -c "npx prisma migrate deploy && npm run dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: "postgresql://postgres:postgres@db:5432/pricengine_dev"
+      NEXTAUTH_SECRET: "dev-secret-change-in-production"
+      NEXTAUTH_URL: "http://localhost:3000"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pricengine_pgdata:
+  pricengine_node_modules:
