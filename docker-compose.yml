@@ -36,6 +36,20 @@ services:
       db:
         condition: service_healthy
 
+  test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    container_name: pricengine-test
+    working_dir: /app
+    command: sleep infinity
+    volumes:
+      - .:/app
+    depends_on:
+      - app
+    environment:
+      APP_URL: "http://app:3000"
+
 volumes:
   pricengine_pgdata:
   pricengine_node_modules:
