@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/config";
 import { findAllOrgs } from "@/lib/db/queries/organizations";
 import { prisma } from "@/lib/db/client";
@@ -6,7 +7,7 @@ import AdminClient from "./admin-client";
 export default async function AdminPage() {
   const session = await auth();
   const user = session?.user as { role: string };
-  if (user?.role !== "super_admin") return null;
+  if (user?.role !== "super_admin") redirect("/dashboard");
 
   const orgs = await findAllOrgs();
   const users = await prisma.user.findMany({
