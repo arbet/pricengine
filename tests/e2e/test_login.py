@@ -1,35 +1,32 @@
-"""Smoke test: verify the login page loads and has expected elements."""
+"""Login page element verification tests."""
 
-from playwright.sync_api import sync_playwright
+import sys
+from helpers import APP_URL, run_test
 
-APP_URL = "http://app:3000"
 
+def test_login_page_elements(page):
+    """Verify login page loads with email and password fields."""
+    page.goto(APP_URL, wait_until="networkidle")
+    assert page.title(), "Page should have a title"
 
-def test_login_page():
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
+    email_input = page.locator('input[type="email"]')
+    password_input = page.locator('input[type="password"]')
 
-        # Navigate to the login page (root route)
-        page.goto(APP_URL, wait_until="networkidle")
+    assert email_input.count() > 0, "Login page should have an email input"
+    assert password_input.count() > 0, "Login page should have a password input"
 
-        # Verify the page loaded with login form elements
-        assert page.title(), "Page should have a title"
-
-        # Check for email and password inputs
-        email_input = page.locator('input[type="email"], input[name="email"]')
-        password_input = page.locator('input[type="password"], input[name="password"]')
-
-        assert email_input.count() > 0, "Login page should have an email input"
-        assert password_input.count() > 0, "Login page should have a password input"
-
-        # Take a screenshot for visual verification
-        page.screenshot(path="/tmp/login.png", full_page=True)
-        print("Screenshot saved to /tmp/login.png")
-
-        browser.close()
-        print("PASSED: Login page loads with email and password fields")
+    # Verify Sign In button exists
+    sign_in = page.locator('button:has-text("Sign In")')
+    assert sign_in.count() > 0, "Login page should have a Sign In button"
 
 
 if __name__ == "__main__":
-    test_login_page()
+    tests = [
+        (test_login_page_elements, "login_page_elements"),
+    ]
+    print("=== Login Tests ===")
+    results = [run_test(fn, name) for fn, name in tests]
+    failed = results.count(False)
+    print(f"\n{results.count(True)} passed, {failed} failed")
+    if failed:
+        sys.exit(1)
