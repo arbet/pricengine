@@ -65,7 +65,7 @@ const navItems: NavItem[] = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { role, logout } = useAuth();
+  const { role, orgName, logout } = useAuth();
 
   const visibleItems = navItems.filter((item) => role && item.roles.includes(role));
 
@@ -81,6 +81,9 @@ export default function Sidebar() {
           </div>
           <div>
             <span className="font-display font-bold text-white text-lg tracking-tight">PriceEngine</span>
+            {orgName && (
+              <span className="text-xs text-white/50 font-body truncate block">{orgName}</span>
+            )}
           </div>
         </div>
       </div>

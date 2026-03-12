@@ -7,6 +7,7 @@ interface AuthContextType {
   isLoggedIn: boolean;
   role: string | null;
   orgId: string | null;
+  orgName: string | null;
   userName: string | null;
   userId: string | null;
   logout: () => void;
@@ -18,7 +19,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const { data: session, status } = useSession();
 
   const isLoggedIn = status === "authenticated" && !!session?.user;
-  const user = session?.user as { id: string; name?: string | null; role: string; orgId: string | null } | undefined;
+  const user = session?.user as { id: string; name?: string | null; role: string; orgId: string | null; orgName: string | null } | undefined;
 
   const logout = () => {
     signOut({ callbackUrl: "/" });
@@ -30,6 +31,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoggedIn,
         role: user?.role ?? null,
         orgId: user?.orgId ?? null,
+        orgName: user?.orgName ?? null,
         userName: user?.name ?? null,
         userId: user?.id ?? null,
         logout,

@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth/config";
 import { createTestSchema, updateTestSchema, excelTestRowSchema } from "@/lib/validations/schemas";
 import { revalidatePath } from "next/cache";
 import ExcelJS from "exceljs";
+import { formatError } from "./utils";
 
 async function getSession() {
   const session = await auth();
@@ -22,22 +23,26 @@ export async function createTest(data: {
   listPrice: number;
   category?: string;
 }) {
-  const user = await getSession();
-  const parsed = createTestSchema.parse(data);
+  try {
+    const user = await getSession();
+    const parsed = createTestSchema.parse(data);
 
-  const test = await prisma.labTest.create({
-    data: {
-      testId: parsed.testId,
-      name: parsed.name,
-      reagentCost: parsed.reagentCost,
-      listPrice: parsed.listPrice,
-      category: parsed.category || null,
-      orgId: user.orgId!,
-    },
-  });
+    const test = await prisma.labTest.create({
+      data: {
+        testId: parsed.testId,
+        name: parsed.name,
+        reagentCost: parsed.reagentCost,
+        listPrice: parsed.listPrice,
+        category: parsed.category || null,
+        orgId: user.orgId!,
+      },
+    });
 
-  revalidatePath("/dashboard/tests");
-  return { success: true, test };
+    revalidatePath("/dashboard/tests");
+    return { success: true as const, test };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function updateTest(data: {
@@ -48,117 +53,129 @@ export async function updateTest(data: {
   listPrice: number;
   category?: string;
 }) {
-  const user = await getSession();
-  const parsed = updateTestSchema.parse(data);
+  try {
+    const user = await getSession();
+    const parsed = updateTestSchema.parse(data);
 
-  const existing = await prisma.labTest.findUnique({ where: { id: parsed.id } });
-  if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
+    const existing = await prisma.labTest.findUnique({ where: { id: parsed.id } });
+    if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
 
-  const test = await prisma.labTest.update({
-    where: { id: parsed.id },
-    data: {
-      testId: parsed.testId,
-      name: parsed.name,
-      reagentCost: parsed.reagentCost,
-      listPrice: parsed.listPrice,
-      category: parsed.category || null,
-    },
-  });
+    const test = await prisma.labTest.update({
+      where: { id: parsed.id },
+      data: {
+        testId: parsed.testId,
+        name: parsed.name,
+        reagentCost: parsed.reagentCost,
+        listPrice: parsed.listPrice,
+        category: parsed.category || null,
+      },
+    });
 
-  revalidatePath("/dashboard/tests");
-  return { success: true, test };
+    revalidatePath("/dashboard/tests");
+    return { success: true as const, test };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function deleteTest(id: string) {
-  const user = await getSession();
+  try {
+    const user = await getSession();
 
-  const existing = await prisma.labTest.findUnique({ where: { id } });
-  if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
+    const existing = await prisma.labTest.findUnique({ where: { id } });
+    if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
 
-  await prisma.labTest.delete({ where: { id } });
+    await prisma.labTest.delete({ where: { id } });
 
-  revalidatePath("/dashboard/tests");
-  return { success: true };
+    revalidatePath("/dashboard/tests");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function uploadTestCatalog(formData: FormData) {
-  const user = await getSession();
-  const file = formData.get("file") as File;
-  if (!file) return { success: false, errors: [{ row: 0, message: "No file provided" }] };
+  try {
+    const user = await getSession();
+    const file = formData.get("file") as File;
+    if (!file) return { success: false as const, errors: [{ row: 0, message: "No file provided" }] };
 
-  const arrayBuffer = await file.arrayBuffer();
-  const workbook = new ExcelJS.Workbook();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  await workbook.xlsx.load(arrayBuffer as any);
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = new ExcelJS.Workbook();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await workbook.xlsx.load(arrayBuffer as any);
 
-  const worksheet = workbook.worksheets[0];
-  if (!worksheet) return { success: false, errors: [{ row: 0, message: "No worksheet found" }] };
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) return { success: false as const, errors: [{ row: 0, message: "No worksheet found" }] };
 
-  const errors: { row: number; message: string }[] = [];
-  const rows: { testId: string; name: string; reagentCost: number; listPrice: number; category: string }[] = [];
-  const seenTestIds = new Set<string>();
+    const errors: { row: number; message: string }[] = [];
+    const rows: { testId: string; name: string; reagentCost: number; listPrice: number; category: string }[] = [];
+    const seenTestIds = new Set<string>();
 
-  worksheet.eachRow((row, rowNumber) => {
-    if (rowNumber === 1) return; // Skip header
+    worksheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return; // Skip header
 
-    const rawTestId = row.getCell(1).text?.trim();
-    const rawName = row.getCell(2).text?.trim();
-    const rawReagent = parseFloat(String(row.getCell(3).value));
-    const rawList = parseFloat(String(row.getCell(4).value));
-    const rawCategory = row.getCell(5).text?.trim() || "";
+      const rawTestId = row.getCell(1).text?.trim();
+      const rawName = row.getCell(2).text?.trim();
+      const rawReagent = parseFloat(String(row.getCell(3).value));
+      const rawList = parseFloat(String(row.getCell(4).value));
+      const rawCategory = row.getCell(5).text?.trim() || "";
 
-    const result = excelTestRowSchema.safeParse({
-      testId: rawTestId,
-      name: rawName,
-      reagentCost: isNaN(rawReagent) ? -1 : rawReagent,
-      listPrice: isNaN(rawList) ? -1 : rawList,
-      category: rawCategory,
+      const result = excelTestRowSchema.safeParse({
+        testId: rawTestId,
+        name: rawName,
+        reagentCost: isNaN(rawReagent) ? -1 : rawReagent,
+        listPrice: isNaN(rawList) ? -1 : rawList,
+        category: rawCategory,
+      });
+
+      if (!result.success) {
+        const issues = result.error.issues.map((i) => i.message).join("; ");
+        errors.push({ row: rowNumber, message: issues });
+        return;
+      }
+
+      if (seenTestIds.has(result.data.testId)) {
+        errors.push({ row: rowNumber, message: `Duplicate Test ID: ${result.data.testId}` });
+        return;
+      }
+
+      seenTestIds.add(result.data.testId);
+      rows.push(result.data);
     });
 
-    if (!result.success) {
-      const issues = result.error.issues.map((i) => i.message).join("; ");
-      errors.push({ row: rowNumber, message: issues });
-      return;
+    if (errors.length > 0) {
+      return { success: false as const, errors, validCount: rows.length };
     }
 
-    if (seenTestIds.has(result.data.testId)) {
-      errors.push({ row: rowNumber, message: `Duplicate Test ID: ${result.data.testId}` });
-      return;
+    if (rows.length === 0) {
+      return { success: false as const, errors: [{ row: 0, message: "No valid test rows found" }] };
     }
 
-    seenTestIds.add(result.data.testId);
-    rows.push(result.data);
-  });
+    // Bulk upsert
+    for (const row of rows) {
+      await prisma.labTest.upsert({
+        where: { testId_orgId: { testId: row.testId, orgId: user.orgId! } },
+        update: {
+          name: row.name,
+          reagentCost: row.reagentCost,
+          listPrice: row.listPrice,
+          category: row.category || null,
+        },
+        create: {
+          testId: row.testId,
+          name: row.name,
+          reagentCost: row.reagentCost,
+          listPrice: row.listPrice,
+          category: row.category || null,
+          orgId: user.orgId!,
+        },
+      });
+    }
 
-  if (errors.length > 0) {
-    return { success: false, errors, validCount: rows.length };
+    revalidatePath("/dashboard/tests");
+    return { success: true as const, importedCount: rows.length };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
   }
-
-  if (rows.length === 0) {
-    return { success: false, errors: [{ row: 0, message: "No valid test rows found" }] };
-  }
-
-  // Bulk upsert
-  for (const row of rows) {
-    await prisma.labTest.upsert({
-      where: { testId_orgId: { testId: row.testId, orgId: user.orgId! } },
-      update: {
-        name: row.name,
-        reagentCost: row.reagentCost,
-        listPrice: row.listPrice,
-        category: row.category || null,
-      },
-      create: {
-        testId: row.testId,
-        name: row.name,
-        reagentCost: row.reagentCost,
-        listPrice: row.listPrice,
-        category: row.category || null,
-        orgId: user.orgId!,
-      },
-    });
-  }
-
-  revalidatePath("/dashboard/tests");
-  return { success: true, importedCount: rows.length };
 }

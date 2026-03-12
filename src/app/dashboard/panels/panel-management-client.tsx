@@ -45,6 +45,7 @@ export default function PanelManagementClient({
   // Form state
   const [formName, setFormName] = useState("");
   const [formTestIds, setFormTestIds] = useState<string[]>([]);
+  const [formError, setFormError] = useState("");
 
   const filtered = useMemo(() => {
     if (!search) return panels;
@@ -55,63 +56,56 @@ export default function PanelManagementClient({
   const openAdd = () => {
     setFormName("");
     setFormTestIds([]);
+    setFormError("");
     setShowAddModal(true);
   };
 
   const openEdit = (p: Panel) => {
     setFormName(p.name);
     setFormTestIds(p.panelTests.map((pt) => pt.testId));
+    setFormError("");
     setEditPanel(p);
   };
 
   const handleAdd = async () => {
     if (!formName.trim() || formTestIds.length === 0) return;
     setLoading(true);
-    try {
-      const result = await createPanel({ name: formName, testIds: formTestIds });
-      if (result.success) {
-        setPanels([result.panel as Panel, ...panels]);
-        setShowAddModal(false);
-      }
-    } catch (e) {
-      console.error("Failed to create panel:", e);
-    } finally {
-      setLoading(false);
+    setFormError("");
+    const result = await createPanel({ name: formName, testIds: formTestIds });
+    if (result.success && "panel" in result) {
+      setPanels([result.panel as Panel, ...panels]);
+      setShowAddModal(false);
+    } else if (!result.success && "error" in result) {
+      setFormError(result.error);
     }
+    setLoading(false);
   };
 
   const handleEditSave = async () => {
     if (!editPanel || !formName.trim() || formTestIds.length === 0) return;
     setLoading(true);
-    try {
-      const result = await updatePanel({
-        id: editPanel.id,
-        name: formName,
-        testIds: formTestIds,
-      });
-      if (result.success) {
-        setPanels(panels.map((p) => (p.id === editPanel.id ? (result.panel as Panel) : p)));
-        setEditPanel(null);
-      }
-    } catch (e) {
-      console.error("Failed to update panel:", e);
-    } finally {
-      setLoading(false);
+    setFormError("");
+    const result = await updatePanel({
+      id: editPanel.id,
+      name: formName,
+      testIds: formTestIds,
+    });
+    if (result.success && "panel" in result) {
+      setPanels(panels.map((p) => (p.id === editPanel.id ? (result.panel as Panel) : p)));
+      setEditPanel(null);
+    } else if (!result.success && "error" in result) {
+      setFormError(result.error);
     }
+    setLoading(false);
   };
 
   const handleDelete = async (id: string) => {
     setLoading(true);
-    try {
-      const result = await deletePanel(id);
-      if (result.success) {
-        setPanels(panels.filter((p) => p.id !== id));
-      }
-    } catch (e) {
-      console.error("Failed to delete panel:", e);
-    } finally {
-      setLoading(false);
+    const result = await deletePanel(id);
+    if (result.success) {
+      setPanels(panels.filter((p) => p.id !== id));
     }
+    setLoading(false);
   };
 
   return (
@@ -210,6 +204,7 @@ export default function PanelManagementClient({
           onSubmit={handleAdd}
           submitLabel={loading ? "Adding..." : "Add Panel"}
           disabled={loading}
+          error={formError}
         />
       </Modal>
 
@@ -222,6 +217,7 @@ export default function PanelManagementClient({
           onSubmit={handleEditSave}
           submitLabel={loading ? "Saving..." : "Save Changes"}
           disabled={loading}
+          error={formError}
         />
       </Modal>
     </div>
@@ -235,6 +231,7 @@ function PanelForm({
   onSubmit,
   submitLabel,
   disabled,
+  error,
 }: {
   name: string; onName: (v: string) => void;
   selectedTestIds: string[]; onSelectedTestIds: (v: string[]) => void;
@@ -242,6 +239,7 @@ function PanelForm({
   onSubmit: () => void;
   submitLabel: string;
   disabled?: boolean;
+  error?: string;
 }) {
   const [attempted, setAttempted] = useState(false);
   const [testSearch, setTestSearch] = useState("");
@@ -338,6 +336,7 @@ function PanelForm({
         {testsInvalid && <p className="mt-1 text-xs text-danger font-body">Select at least one test</p>}
       </div>
 
+      {error && <p className="text-xs text-red-500 font-body">{error}</p>}
       <button
         onClick={handleSubmit}
         disabled={disabled}

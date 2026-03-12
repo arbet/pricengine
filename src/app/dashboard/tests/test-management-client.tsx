@@ -22,6 +22,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
   const [showUpload, setShowUpload] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<{ message: string; isError: boolean } | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [fileName, setFileName] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [formTestId, setFormTestId] = useState("");
@@ -29,6 +30,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
   const [formReagent, setFormReagent] = useState("");
   const [formList, setFormList] = useState("");
   const [formCategory, setFormCategory] = useState("");
+  const [formError, setFormError] = useState("");
 
   const filtered = useMemo(() => {
     if (!search) return tests;
@@ -39,7 +41,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
   }, [tests, search]);
 
   const openAdd = () => {
-    setFormTestId(""); setFormName(""); setFormReagent(""); setFormList(""); setFormCategory("");
+    setFormTestId(""); setFormName(""); setFormReagent(""); setFormList(""); setFormCategory(""); setFormError("");
     setShowAddModal(true);
   };
 
@@ -49,11 +51,13 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
     setFormReagent(String(Number(t.reagentCost)));
     setFormList(String(Number(t.listPrice)));
     setFormCategory(t.category || "");
+    setFormError("");
     setEditTest(t);
   };
 
   const handleAdd = async () => {
     if (!formTestId.trim() || !formName.trim() || !formList.trim()) return;
+    setFormError("");
     const result = await createTest({
       testId: formTestId,
       name: formName,
@@ -61,14 +65,17 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
       listPrice: parseFloat(formList) || 0,
       category: formCategory || undefined,
     });
-    if (result.success && result.test) {
+    if (result.success && "test" in result) {
       setTests([...tests, result.test as unknown as LabTestRow]);
       setShowAddModal(false);
+    } else if (!result.success && "error" in result) {
+      setFormError(result.error);
     }
   };
 
   const handleEditSave = async () => {
     if (!editTest) return;
+    setFormError("");
     const result = await updateTest({
       id: editTest.id,
       testId: formTestId,
@@ -77,15 +84,19 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
       listPrice: parseFloat(formList) || 0,
       category: formCategory || undefined,
     });
-    if (result.success && result.test) {
+    if (result.success && "test" in result) {
       setTests(tests.map((t) => (t.id === editTest.id ? result.test as unknown as LabTestRow : t)));
       setEditTest(null);
+    } else if (!result.success && "error" in result) {
+      setFormError(result.error);
     }
   };
 
   const handleDelete = async (id: string) => {
-    await deleteTest(id);
-    setTests(tests.filter((t) => t.id !== id));
+    const result = await deleteTest(id);
+    if (result.success) {
+      setTests(tests.filter((t) => t.id !== id));
+    }
   };
 
   const handleUpload = async () => {
@@ -134,7 +145,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
           </div>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => { setShowUpload(true); setUploadStatus(null); }}
+              onClick={() => { setShowUpload(true); setUploadStatus(null); setFileName(""); }}
               className="px-4 py-2.5 rounded-lg border border-border text-sm font-body font-medium text-text-secondary hover:bg-surface transition-colors flex items-center gap-2"
             >
               <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -214,6 +225,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
           category={formCategory} onCategory={setFormCategory}
           onSubmit={handleAdd}
           submitLabel="Add Test"
+          error={formError}
         />
       </Modal>
 
@@ -227,6 +239,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
           category={formCategory} onCategory={setFormCategory}
           onSubmit={handleEditSave}
           submitLabel="Save Changes"
+          error={formError}
         />
       </Modal>
 
@@ -240,9 +253,11 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
             <svg className="mx-auto mb-3 text-text-muted" width="40" height="40" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
               <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            <p className="text-sm font-body text-text-secondary font-medium">Click to select your Excel file</p>
+            <p className="text-sm font-body text-text-secondary font-medium">
+              {fileName ? fileName : "Click to select your Excel file"}
+            </p>
             <p className="text-xs text-text-muted mt-1">.xlsx format, max 5MB</p>
-            <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={() => setUploadStatus(null)} />
+            <input ref={fileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => { setFileName(e.target.files?.[0]?.name || ""); setUploadStatus(null); }} />
           </div>
           <div className="bg-surface rounded-lg p-4">
             <p className="text-xs font-body font-medium text-text-secondary mb-2">Required columns (in order):</p>
@@ -251,6 +266,16 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
                 <span key={col} className="text-xs font-mono px-2 py-1 rounded bg-white border border-border text-text-muted">{col}</span>
               ))}
             </div>
+            <a
+              href="/test-catalog-sample.xlsx"
+              download
+              className="inline-flex items-center gap-1.5 mt-3 text-xs font-body font-medium text-accent hover:text-accent-light transition-colors"
+            >
+              <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              Download sample template
+            </a>
           </div>
           {uploadStatus && (
             <div className={`text-sm font-body p-3 rounded-lg whitespace-pre-wrap ${uploadStatus.isError ? "bg-danger-light text-danger" : "bg-success-light text-success"}`}>
@@ -259,7 +284,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
           )}
           <button
             onClick={handleUpload}
-            disabled={uploading || !fileRef.current?.files?.length}
+            disabled={uploading || !fileName}
             className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {uploading ? "Uploading..." : "Upload & Validate"}
@@ -270,7 +295,7 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
   );
 }
 
-function TestForm({ testId, onTestId, name, onName, reagent, onReagent, list, onList, category, onCategory, onSubmit, submitLabel }: {
+function TestForm({ testId, onTestId, name, onName, reagent, onReagent, list, onList, category, onCategory, onSubmit, submitLabel, error }: {
   testId: string; onTestId: (v: string) => void;
   name: string; onName: (v: string) => void;
   reagent: string; onReagent: (v: string) => void;
@@ -278,6 +303,7 @@ function TestForm({ testId, onTestId, name, onName, reagent, onReagent, list, on
   category: string; onCategory: (v: string) => void;
   onSubmit: () => void;
   submitLabel: string;
+  error?: string;
 }) {
   const [attempted, setAttempted] = useState(false);
 
@@ -328,6 +354,7 @@ function TestForm({ testId, onTestId, name, onName, reagent, onReagent, list, on
         <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Category</label>
         <input value={category} onChange={(e) => onCategory(e.target.value)} className={inputClass() + " font-body"} />
       </div>
+      {error && <p className="text-xs text-red-500 font-body">{error}</p>}
       <button onClick={handleSubmit} className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors mt-2">
         {submitLabel}
       </button>

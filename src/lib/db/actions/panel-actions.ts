@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/client";
 import { auth } from "@/lib/auth/config";
 import { createPanelSchema, updatePanelSchema } from "@/lib/validations/schemas";
 import { revalidatePath } from "next/cache";
+import { formatError } from "./utils";
 
 async function getSession() {
   const session = await auth();
@@ -14,24 +15,28 @@ async function getSession() {
 }
 
 export async function createPanel(data: { name: string; testIds: string[] }) {
-  const user = await getSession();
-  const parsed = createPanelSchema.parse(data);
+  try {
+    const user = await getSession();
+    const parsed = createPanelSchema.parse(data);
 
-  const panel = await prisma.panel.create({
-    data: {
-      name: parsed.name,
-      orgId: user.orgId,
-      panelTests: {
-        create: parsed.testIds.map((testId) => ({
-          testId,
-        })),
+    const panel = await prisma.panel.create({
+      data: {
+        name: parsed.name,
+        orgId: user.orgId,
+        panelTests: {
+          create: parsed.testIds.map((testId) => ({
+            testId,
+          })),
+        },
       },
-    },
-    include: { panelTests: { include: { test: true } } },
-  });
+      include: { panelTests: { include: { test: true } } },
+    });
 
-  revalidatePath("/dashboard/panels");
-  return { success: true, panel };
+    revalidatePath("/dashboard/panels");
+    return { success: true as const, panel };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function updatePanel(data: {
@@ -39,45 +44,51 @@ export async function updatePanel(data: {
   name: string;
   testIds: string[];
 }) {
-  const user = await getSession();
-  const parsed = updatePanelSchema.parse(data);
+  try {
+    const user = await getSession();
+    const parsed = updatePanelSchema.parse(data);
 
-  // Verify panel belongs to user's org
-  const existing = await prisma.panel.findUnique({ where: { id: parsed.id } });
-  if (!existing || existing.orgId !== user.orgId) {
-    throw new Error("Panel not found");
-  }
+    const existing = await prisma.panel.findUnique({ where: { id: parsed.id } });
+    if (!existing || existing.orgId !== user.orgId) {
+      throw new Error("Panel not found");
+    }
 
-  // Delete existing panel tests and recreate
-  await prisma.panelTest.deleteMany({ where: { panelId: parsed.id } });
+    await prisma.panelTest.deleteMany({ where: { panelId: parsed.id } });
 
-  const panel = await prisma.panel.update({
-    where: { id: parsed.id },
-    data: {
-      name: parsed.name,
-      panelTests: {
-        create: parsed.testIds.map((testId) => ({
-          testId,
-        })),
+    const panel = await prisma.panel.update({
+      where: { id: parsed.id },
+      data: {
+        name: parsed.name,
+        panelTests: {
+          create: parsed.testIds.map((testId) => ({
+            testId,
+          })),
+        },
       },
-    },
-    include: { panelTests: { include: { test: true } } },
-  });
+      include: { panelTests: { include: { test: true } } },
+    });
 
-  revalidatePath("/dashboard/panels");
-  return { success: true, panel };
+    revalidatePath("/dashboard/panels");
+    return { success: true as const, panel };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function deletePanel(id: string) {
-  const user = await getSession();
+  try {
+    const user = await getSession();
 
-  const existing = await prisma.panel.findUnique({ where: { id } });
-  if (!existing || existing.orgId !== user.orgId) {
-    throw new Error("Panel not found");
+    const existing = await prisma.panel.findUnique({ where: { id } });
+    if (!existing || existing.orgId !== user.orgId) {
+      throw new Error("Panel not found");
+    }
+
+    await prisma.panel.delete({ where: { id } });
+
+    revalidatePath("/dashboard/panels");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
   }
-
-  await prisma.panel.delete({ where: { id } });
-
-  revalidatePath("/dashboard/panels");
-  return { success: true };
 }

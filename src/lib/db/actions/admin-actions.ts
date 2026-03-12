@@ -6,6 +6,7 @@ import { createOrgSchema, updateOrgSchema, createUserSchema, updateUserSchema } 
 import { hashSync } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
+import { formatError } from "./utils";
 
 async function getAdminSession() {
   const session = await auth();
@@ -22,22 +23,26 @@ export async function createOrganization(data: {
   phone?: string;
   address?: string;
 }) {
-  await getAdminSession();
-  const parsed = createOrgSchema.parse(data);
+  try {
+    await getAdminSession();
+    const parsed = createOrgSchema.parse(data);
 
-  const org = await prisma.organization.create({
-    data: {
-      name: parsed.name,
-      code: parsed.code.toUpperCase(),
-      contactEmail: parsed.contactEmail || null,
-      phone: parsed.phone || null,
-      address: parsed.address || null,
-      apiKey: `${parsed.code.toLowerCase()}-${crypto.randomBytes(16).toString("hex")}`,
-    },
-  });
+    const org = await prisma.organization.create({
+      data: {
+        name: parsed.name,
+        code: parsed.code.toUpperCase(),
+        contactEmail: parsed.contactEmail || null,
+        phone: parsed.phone || null,
+        address: parsed.address || null,
+        apiKey: `${parsed.code.toLowerCase()}-${crypto.randomBytes(16).toString("hex")}`,
+      },
+    });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true, org };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const, org };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function updateOrganization(data: {
@@ -48,31 +53,39 @@ export async function updateOrganization(data: {
   phone?: string;
   address?: string;
 }) {
-  await getAdminSession();
-  const parsed = updateOrgSchema.parse(data);
+  try {
+    await getAdminSession();
+    const parsed = updateOrgSchema.parse(data);
 
-  const org = await prisma.organization.update({
-    where: { id: parsed.id },
-    data: {
-      name: parsed.name,
-      code: parsed.code.toUpperCase(),
-      contactEmail: parsed.contactEmail || null,
-      phone: parsed.phone || null,
-      address: parsed.address || null,
-    },
-  });
+    const org = await prisma.organization.update({
+      where: { id: parsed.id },
+      data: {
+        name: parsed.name,
+        code: parsed.code.toUpperCase(),
+        contactEmail: parsed.contactEmail || null,
+        phone: parsed.phone || null,
+        address: parsed.address || null,
+      },
+    });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true, org };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const, org };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function deleteOrganization(id: string) {
-  await getAdminSession();
+  try {
+    await getAdminSession();
 
-  await prisma.organization.delete({ where: { id } });
+    await prisma.organization.delete({ where: { id } });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function createUser(data: {
@@ -82,21 +95,25 @@ export async function createUser(data: {
   role: "lab_manager" | "lab_employee";
   orgId: string;
 }) {
-  await getAdminSession();
-  const parsed = createUserSchema.parse(data);
+  try {
+    await getAdminSession();
+    const parsed = createUserSchema.parse(data);
 
-  const user = await prisma.user.create({
-    data: {
-      name: parsed.name,
-      email: parsed.email,
-      passwordHash: hashSync(parsed.password, 10),
-      role: parsed.role,
-      orgId: parsed.orgId,
-    },
-  });
+    const user = await prisma.user.create({
+      data: {
+        name: parsed.name,
+        email: parsed.email,
+        passwordHash: hashSync(parsed.password, 10),
+        role: parsed.role,
+        orgId: parsed.orgId,
+      },
+    });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function updateUser(data: {
@@ -106,29 +123,37 @@ export async function updateUser(data: {
   password?: string;
   role?: "lab_manager" | "lab_employee";
 }) {
-  await getAdminSession();
-  const parsed = updateUserSchema.parse(data);
+  try {
+    await getAdminSession();
+    const parsed = updateUserSchema.parse(data);
 
-  const updateData: Record<string, unknown> = {};
-  if (parsed.name) updateData.name = parsed.name;
-  if (parsed.email) updateData.email = parsed.email;
-  if (parsed.role) updateData.role = parsed.role;
-  if (parsed.password) updateData.passwordHash = hashSync(parsed.password, 10);
+    const updateData: Record<string, unknown> = {};
+    if (parsed.name) updateData.name = parsed.name;
+    if (parsed.email) updateData.email = parsed.email;
+    if (parsed.role) updateData.role = parsed.role;
+    if (parsed.password) updateData.passwordHash = hashSync(parsed.password, 10);
 
-  const user = await prisma.user.update({
-    where: { id: parsed.id },
-    data: updateData,
-  });
+    const user = await prisma.user.update({
+      where: { id: parsed.id },
+      data: updateData,
+    });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }
 
 export async function removeUser(id: string) {
-  await getAdminSession();
+  try {
+    await getAdminSession();
 
-  await prisma.user.delete({ where: { id } });
+    await prisma.user.delete({ where: { id } });
 
-  revalidatePath("/dashboard/admin");
-  return { success: true };
+    revalidatePath("/dashboard/admin");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
 }

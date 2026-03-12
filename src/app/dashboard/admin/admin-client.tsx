@@ -6,6 +6,7 @@ import Modal from "@/components/modal";
 import { getRoleName } from "@/context/auth-context";
 import {
   createOrganization,
+  updateOrganization,
   deleteOrganization,
   createUser,
   updateUser,
@@ -31,27 +32,51 @@ interface UserRow {
   orgId: string | null;
 }
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function fieldClass(invalid?: boolean) {
+  return `mt-1 w-full px-4 py-2.5 rounded-lg border text-sm font-body focus:outline-none transition-colors ${invalid ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`;
+}
+
+function inlineFieldClass(invalid?: boolean) {
+  return `mt-1 w-full px-3 py-2 rounded-lg border text-sm font-body focus:outline-none transition-colors bg-surface ${invalid ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`;
+}
+
 export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs: OrgRow[]; initialUsers: UserRow[] }) {
   const [orgs, setOrgs] = useState(initialOrgs);
   const [users, setUsers] = useState(initialUsers);
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
   const [showAddOrg, setShowAddOrg] = useState(false);
+  const [editingOrg, setEditingOrg] = useState<OrgRow | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [removeUserConfirmId, setRemoveUserConfirmId] = useState<string | null>(null);
 
+  // Add Org form
   const [formName, setFormName] = useState("");
   const [formCode, setFormCode] = useState("");
   const [formEmail, setFormEmail] = useState("");
   const [formPhone, setFormPhone] = useState("");
   const [formAddress, setFormAddress] = useState("");
+  const [orgAttempted, setOrgAttempted] = useState(false);
 
+  // Edit Org form
+  const [editOrgName, setEditOrgName] = useState("");
+  const [editOrgCode, setEditOrgCode] = useState("");
+  const [editOrgEmail, setEditOrgEmail] = useState("");
+  const [editOrgPhone, setEditOrgPhone] = useState("");
+  const [editOrgAddress, setEditOrgAddress] = useState("");
+  const [editOrgAttempted, setEditOrgAttempted] = useState(false);
+
+  // Add User form
   const [showAddUser, setShowAddUser] = useState(false);
   const [userFormName, setUserFormName] = useState("");
   const [userFormEmail, setUserFormEmail] = useState("");
   const [userFormRole, setUserFormRole] = useState<"lab_manager" | "lab_employee">("lab_employee");
   const [userFormPassword, setUserFormPassword] = useState("");
   const [userFormShowPw, setUserFormShowPw] = useState(false);
+  const [userAttempted, setUserAttempted] = useState(false);
 
+  // Edit User form
   const [editingUser, setEditingUser] = useState<UserRow | null>(null);
   const [editName, setEditName] = useState("");
   const [editEmail, setEditEmail] = useState("");
@@ -60,33 +85,92 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   const [editConfirmPassword, setEditConfirmPassword] = useState("");
   const [editShowPw, setEditShowPw] = useState(false);
   const [editPwError, setEditPwError] = useState("");
+  const [editAttempted, setEditAttempted] = useState(false);
+
+  const [actionError, setActionError] = useState("");
 
   const orgUsers = (orgId: string) => users.filter((u) => u.orgId === orgId);
 
+  // --- Add Org validation ---
+  const orgNameErr = orgAttempted && !formName.trim() ? "Organization name is required" : "";
+  const orgCodeErr = orgAttempted && !formCode.trim() ? "Code is required" : orgAttempted && formCode.length > 10 ? "Code must be 10 characters or less" : "";
+  const orgEmailErr = orgAttempted && formEmail.trim() && !EMAIL_RE.test(formEmail) ? "Invalid email format" : "";
+  const orgValid = formName.trim() && formCode.trim() && formCode.length <= 10 && (!formEmail.trim() || EMAIL_RE.test(formEmail));
+
   const handleAddOrg = async () => {
+    setOrgAttempted(true);
+    if (!orgValid) return;
+    setActionError("");
     const result = await createOrganization({ name: formName, code: formCode, contactEmail: formEmail, phone: formPhone, address: formAddress });
-    if (result.success) {
+    if (result.success && "org" in result) {
       setOrgs([...orgs, { ...result.org, createdAt: result.org.createdAt as unknown as string, _count: { users: 0, labTests: 0 } } as unknown as OrgRow]);
       setShowAddOrg(false);
-      setFormName(""); setFormCode(""); setFormEmail(""); setFormPhone(""); setFormAddress("");
+      setFormName(""); setFormCode(""); setFormEmail(""); setFormPhone(""); setFormAddress(""); setOrgAttempted(false);
+    } else if (!result.success && "error" in result) {
+      setActionError(result.error);
+    }
+  };
+
+  // --- Edit Org validation ---
+  const editOrgNameErr = editOrgAttempted && !editOrgName.trim() ? "Organization name is required" : "";
+  const editOrgCodeErr = editOrgAttempted && !editOrgCode.trim() ? "Code is required" : editOrgAttempted && editOrgCode.length > 10 ? "Code must be 10 characters or less" : "";
+  const editOrgEmailErr = editOrgAttempted && editOrgEmail.trim() && !EMAIL_RE.test(editOrgEmail) ? "Invalid email format" : "";
+  const editOrgValid = editOrgName.trim() && editOrgCode.trim() && editOrgCode.length <= 10 && (!editOrgEmail.trim() || EMAIL_RE.test(editOrgEmail));
+
+  const openEditOrg = (org: OrgRow) => {
+    setEditingOrg(org);
+    setEditOrgName(org.name);
+    setEditOrgCode(org.code);
+    setEditOrgEmail(org.contactEmail || "");
+    setEditOrgPhone(org.phone || "");
+    setEditOrgAddress(org.address || "");
+    setEditOrgAttempted(false);
+    setActionError("");
+  };
+
+  const handleSaveOrg = async () => {
+    setEditOrgAttempted(true);
+    if (!editingOrg || !editOrgValid) return;
+    setActionError("");
+    const result = await updateOrganization({ id: editingOrg.id, name: editOrgName, code: editOrgCode, contactEmail: editOrgEmail, phone: editOrgPhone, address: editOrgAddress });
+    if (result.success && "org" in result) {
+      setOrgs(orgs.map((o) => (o.id === editingOrg.id ? { ...o, name: result.org.name, code: result.org.code, contactEmail: result.org.contactEmail, phone: result.org.phone, address: result.org.address } : o)));
+      setEditingOrg(null);
+    } else if (!result.success && "error" in result) {
+      setActionError(result.error);
     }
   };
 
   const handleDeleteOrg = async (orgId: string) => {
-    await deleteOrganization(orgId);
-    setOrgs(orgs.filter((o) => o.id !== orgId));
-    setUsers(users.filter((u) => u.orgId !== orgId));
-    setDeleteConfirmId(null);
-    if (expandedOrg === orgId) setExpandedOrg(null);
+    const result = await deleteOrganization(orgId);
+    if (result.success) {
+      setOrgs(orgs.filter((o) => o.id !== orgId));
+      setUsers(users.filter((u) => u.orgId !== orgId));
+      setDeleteConfirmId(null);
+      if (expandedOrg === orgId) setExpandedOrg(null);
+    } else if ("error" in result) {
+      setActionError(result.error);
+      setDeleteConfirmId(null);
+    }
   };
 
+  // --- Add User validation ---
+  const userNameErr = userAttempted && !userFormName.trim() ? "Name is required" : "";
+  const userEmailErr = userAttempted && !userFormEmail.trim() ? "Email is required" : userAttempted && !EMAIL_RE.test(userFormEmail) ? "Invalid email format" : "";
+  const userPwErr = userAttempted && !userFormPassword ? "Password is required" : userAttempted && userFormPassword.length < 6 ? "Password must be at least 6 characters" : "";
+  const userValid = userFormName.trim() && EMAIL_RE.test(userFormEmail) && userFormPassword.length >= 6;
+
   const handleAddUser = async () => {
-    if (!expandedOrg || !userFormPassword) return;
+    setUserAttempted(true);
+    if (!expandedOrg || !userValid) return;
+    setActionError("");
     const result = await createUser({ name: userFormName, email: userFormEmail, password: userFormPassword, role: userFormRole, orgId: expandedOrg });
-    if (result.success && result.user) {
+    if (result.success && "user" in result) {
       setUsers([...users, result.user as UserRow]);
       setShowAddUser(false);
-      setUserFormName(""); setUserFormEmail(""); setUserFormRole("lab_employee"); setUserFormPassword(""); setUserFormShowPw(false);
+      setUserFormName(""); setUserFormEmail(""); setUserFormRole("lab_employee"); setUserFormPassword(""); setUserFormShowPw(false); setUserAttempted(false);
+    } else if (!result.success && "error" in result) {
+      setActionError(result.error);
     }
   };
 
@@ -95,15 +179,20 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     setEditName(u.name);
     setEditEmail(u.email);
     setEditRole(u.role as "lab_manager" | "lab_employee");
-    setEditPassword(""); setEditConfirmPassword(""); setEditShowPw(false); setEditPwError("");
+    setEditPassword(""); setEditConfirmPassword(""); setEditShowPw(false); setEditPwError(""); setEditAttempted(false);
   };
 
+  // --- Edit User validation ---
+  const editNameErr = editAttempted && !editName.trim() ? "Name is required" : "";
+  const editEmailErr = editAttempted && !editEmail.trim() ? "Email is required" : editAttempted && !EMAIL_RE.test(editEmail) ? "Invalid email format" : "";
+  const editPwLenErr = editAttempted && editPassword && editPassword.length < 6 ? "Password must be at least 6 characters" : "";
+  const editPwMatchErr = editAttempted && editPassword && editPassword !== editConfirmPassword ? "Passwords do not match" : "";
+  const editValid = editName.trim() && EMAIL_RE.test(editEmail) && (!editPassword || (editPassword.length >= 6 && editPassword === editConfirmPassword));
+
   const handleSaveUser = async () => {
-    if (!editingUser) return;
-    if (editPassword && editPassword !== editConfirmPassword) {
-      setEditPwError("Passwords do not match.");
-      return;
-    }
+    setEditAttempted(true);
+    if (!editingUser || !editValid) return;
+    setEditPwError("");
     const result = await updateUser({
       id: editingUser.id,
       name: editName,
@@ -111,16 +200,23 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
       role: editRole,
       ...(editPassword ? { password: editPassword } : {}),
     });
-    if (result.success && result.user) {
+    if (result.success && "user" in result) {
       setUsers(users.map((u) => (u.id === editingUser.id ? result.user as UserRow : u)));
       setEditingUser(null);
+    } else if (!result.success && "error" in result) {
+      setEditPwError(result.error);
     }
   };
 
   const handleRemoveUser = async (userId: string) => {
-    await removeUser(userId);
-    setUsers(users.filter((u) => u.id !== userId));
-    setRemoveUserConfirmId(null);
+    const result = await removeUser(userId);
+    if (result.success) {
+      setUsers(users.filter((u) => u.id !== userId));
+      setRemoveUserConfirmId(null);
+    } else if ("error" in result) {
+      setActionError(result.error);
+      setRemoveUserConfirmId(null);
+    }
   };
 
   const toggleOrg = (orgId: string) => {
@@ -153,7 +249,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-semibold text-base text-text-primary">All Organizations</h2>
-          <button onClick={() => setShowAddOrg(true)}
+          <button onClick={() => { setActionError(""); setOrgAttempted(false); setShowAddOrg(true); }}
             className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors flex items-center gap-2">
             <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
             Add Organization
@@ -192,17 +288,24 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
 
                 {isExpanded && (
                   <div className="border-t border-border">
-                    <div className="px-5 pt-4 pb-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
-                      <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Email</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.contactEmail || "—"}</p></div>
-                      <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Phone</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.phone || "—"}</p></div>
-                      <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Code</p><p className="text-sm font-mono text-accent mt-0.5">{org.code}</p></div>
-                      <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Address</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.address || "—"}</p></div>
+                    <div className="px-5 pt-4 pb-4">
+                      <div className="flex items-start justify-between">
+                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 flex-1">
+                          <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Email</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.contactEmail || "—"}</p></div>
+                          <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Phone</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.phone || "—"}</p></div>
+                          <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Code</p><p className="text-sm font-mono text-accent mt-0.5">{org.code}</p></div>
+                          <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Address</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.address || "—"}</p></div>
+                        </div>
+                        <button onClick={() => openEditOrg(org)} title="Edit organization" className="p-1.5 text-text-muted hover:text-accent hover:bg-accent-muted rounded-lg transition-colors shrink-0 ml-2">
+                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="px-5 pb-5 border-t border-border pt-4">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-display font-semibold text-sm text-text-primary">Users &amp; Roles <span className="ml-2 font-mono text-xs text-text-muted font-normal">({members.length})</span></h4>
-                        <button onClick={() => setShowAddUser(!showAddUser)}
+                        <button onClick={() => { setActionError(""); setUserAttempted(false); setShowAddUser(!showAddUser); }}
                           className="px-3 py-1.5 text-xs font-body font-semibold text-accent hover:bg-accent-muted rounded-lg transition-colors flex items-center gap-1.5">
                           <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
                           Add User
@@ -214,14 +317,16 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                           <p className="text-xs font-body font-semibold text-text-secondary uppercase tracking-wider">New User</p>
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="text-xs font-body text-text-muted">Full Name</label>
+                              <label className="text-xs font-body text-text-muted">Full Name <span className="text-red-500">*</span></label>
                               <input value={userFormName} onChange={(e) => setUserFormName(e.target.value)} placeholder="Dr. Jane Smith"
-                                className="mt-1 w-full px-3 py-2 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent bg-surface" />
+                                className={inlineFieldClass(!!userNameErr)} />
+                              {userNameErr && <p className="mt-1 text-xs text-red-500 font-body">{userNameErr}</p>}
                             </div>
                             <div>
-                              <label className="text-xs font-body text-text-muted">Email</label>
+                              <label className="text-xs font-body text-text-muted">Email <span className="text-red-500">*</span></label>
                               <input type="email" value={userFormEmail} onChange={(e) => setUserFormEmail(e.target.value)} placeholder="jane@example.com" autoComplete="off"
-                                className="mt-1 w-full px-3 py-2 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent bg-surface" />
+                                className={inlineFieldClass(!!userEmailErr)} />
+                              {userEmailErr && <p className="mt-1 text-xs text-red-500 font-body">{userEmailErr}</p>}
                             </div>
                           </div>
                           <div className="grid grid-cols-2 gap-3">
@@ -234,11 +339,11 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                               </select>
                             </div>
                             <div>
-                              <label className="text-xs font-body text-text-muted">Password</label>
+                              <label className="text-xs font-body text-text-muted">Password <span className="text-red-500">*</span></label>
                               <div className="relative mt-1">
                                 <input type={userFormShowPw ? "text" : "password"} value={userFormPassword} onChange={(e) => setUserFormPassword(e.target.value)}
-                                  placeholder="Required" autoComplete="new-password"
-                                  className="w-full px-3 py-2 pr-9 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent bg-surface" />
+                                  placeholder="Min. 6 characters" autoComplete="new-password"
+                                  className={`w-full px-3 py-2 pr-9 rounded-lg border text-sm font-body focus:outline-none transition-colors bg-surface ${userPwErr ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
                                 <button type="button" onClick={() => setUserFormShowPw(!userFormShowPw)}
                                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
                                   <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
@@ -246,13 +351,15 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                                   </svg>
                                 </button>
                               </div>
+                              {userPwErr && <p className="mt-1 text-xs text-red-500 font-body">{userPwErr}</p>}
                             </div>
                           </div>
+                          {actionError && showAddUser && <p className="text-xs text-red-500 font-body">{actionError}</p>}
                           <div className="flex gap-2 justify-end">
-                            <button onClick={() => { setShowAddUser(false); setUserFormName(""); setUserFormEmail(""); setUserFormRole("lab_employee"); setUserFormPassword(""); }}
+                            <button onClick={() => { setShowAddUser(false); setActionError(""); setUserAttempted(false); setUserFormName(""); setUserFormEmail(""); setUserFormRole("lab_employee"); setUserFormPassword(""); }}
                               className="px-3 py-1.5 text-xs font-body text-text-muted hover:text-text-primary rounded-lg transition-colors">Cancel</button>
-                            <button onClick={handleAddUser} disabled={!userFormName.trim() || !userFormEmail.trim() || !userFormPassword.trim()}
-                              className="px-4 py-1.5 text-xs font-body font-semibold bg-accent text-white rounded-lg hover:bg-accent-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Add User</button>
+                            <button onClick={handleAddUser}
+                              className="px-4 py-1.5 text-xs font-body font-semibold bg-accent text-white rounded-lg hover:bg-accent-light transition-colors">Add User</button>
                           </div>
                         </div>
                       )}
@@ -358,14 +465,16 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
         {editingUser && (
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Full Name</label>
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Full Name <span className="text-red-500">*</span></label>
               <input value={editName} onChange={(e) => setEditName(e.target.value)}
-                className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+                className={fieldClass(!!editNameErr)} />
+              {editNameErr && <p className="mt-1 text-xs text-red-500 font-body">{editNameErr}</p>}
             </div>
             <div>
-              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Email</label>
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Email <span className="text-red-500">*</span></label>
               <input type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)}
-                className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+                className={fieldClass(!!editEmailErr)} />
+              {editEmailErr && <p className="mt-1 text-xs text-red-500 font-body">{editEmailErr}</p>}
             </div>
             <div>
               <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Role</label>
@@ -382,19 +491,21 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
               <div className="space-y-3">
                 <div className="relative">
                   <input type={editShowPw ? "text" : "password"} value={editPassword} onChange={(e) => { setEditPassword(e.target.value); setEditPwError(""); }}
-                    placeholder="New password"
-                    className="w-full px-4 py-2.5 pr-10 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+                    placeholder="Min. 6 characters"
+                    className={`w-full px-4 py-2.5 pr-10 rounded-lg border text-sm font-body focus:outline-none transition-colors ${editPwLenErr ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
                   <button type="button" onClick={() => setEditShowPw(!editShowPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
                     <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                   </button>
                 </div>
+                {editPwLenErr && <p className="text-xs text-red-500 font-body">{editPwLenErr}</p>}
                 <input type={editShowPw ? "text" : "password"} value={editConfirmPassword} onChange={(e) => { setEditConfirmPassword(e.target.value); setEditPwError(""); }}
                   placeholder="Confirm new password"
-                  className="w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+                  className={`w-full px-4 py-2.5 rounded-lg border text-sm font-body focus:outline-none transition-colors ${editPwMatchErr ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
+                {editPwMatchErr && <p className="text-xs text-red-500 font-body">{editPwMatchErr}</p>}
                 {editPwError && <p className="text-xs text-red-500 font-body">{editPwError}</p>}
               </div>
             </div>
-            <button onClick={handleSaveUser} disabled={!editName.trim() || !editEmail.trim()}
+            <button onClick={handleSaveUser}
               className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Save Changes</button>
           </div>
         )}
@@ -404,37 +515,84 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
       <Modal open={showAddOrg} onClose={() => setShowAddOrg(false)} title="Add Organization">
         <div className="space-y-4">
           <div>
-            <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Organization Name</label>
+            <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Organization Name <span className="text-red-500">*</span></label>
             <input value={formName} onChange={(e) => setFormName(e.target.value)}
-              className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+              className={fieldClass(!!orgNameErr)} />
+            {orgNameErr && <p className="mt-1 text-xs text-red-500 font-body">{orgNameErr}</p>}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Code</label>
-              <input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="e.g. LCE"
-                className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-mono focus:outline-none focus:border-accent" />
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Code <span className="text-red-500">*</span></label>
+              <input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="e.g. LCE" maxLength={10}
+                className={fieldClass(!!orgCodeErr) + " !font-mono"} />
+              {orgCodeErr && <p className="mt-1 text-xs text-red-500 font-body">{orgCodeErr}</p>}
             </div>
             <div>
               <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Phone</label>
               <input value={formPhone} onChange={(e) => setFormPhone(e.target.value)}
-                className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+                className={fieldClass()} />
             </div>
           </div>
           <div>
             <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Contact Email</label>
             <input type="email" value={formEmail} onChange={(e) => setFormEmail(e.target.value)}
-              className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+              className={fieldClass(!!orgEmailErr)} />
+            {orgEmailErr && <p className="mt-1 text-xs text-red-500 font-body">{orgEmailErr}</p>}
           </div>
           <div>
             <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Address</label>
             <input value={formAddress} onChange={(e) => setFormAddress(e.target.value)}
-              className="mt-1 w-full px-4 py-2.5 rounded-lg border border-border text-sm font-body focus:outline-none focus:border-accent" />
+              className={fieldClass()} />
           </div>
-          <button onClick={handleAddOrg} disabled={!formName.trim() || !formCode.trim()}
-            className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors mt-2 disabled:opacity-40 disabled:cursor-not-allowed">
+          {actionError && showAddOrg && <p className="text-xs text-red-500 font-body">{actionError}</p>}
+          <button onClick={handleAddOrg}
+            className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors mt-2">
             Create Organization
           </button>
         </div>
+      </Modal>
+
+      {/* Edit Org Modal */}
+      <Modal open={!!editingOrg} onClose={() => setEditingOrg(null)} title="Edit Organization">
+        {editingOrg && (
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Organization Name <span className="text-red-500">*</span></label>
+              <input value={editOrgName} onChange={(e) => setEditOrgName(e.target.value)}
+                className={fieldClass(!!editOrgNameErr)} />
+              {editOrgNameErr && <p className="mt-1 text-xs text-red-500 font-body">{editOrgNameErr}</p>}
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Code <span className="text-red-500">*</span></label>
+                <input value={editOrgCode} onChange={(e) => setEditOrgCode(e.target.value)} maxLength={10}
+                  className={fieldClass(!!editOrgCodeErr) + " !font-mono"} />
+                {editOrgCodeErr && <p className="mt-1 text-xs text-red-500 font-body">{editOrgCodeErr}</p>}
+              </div>
+              <div>
+                <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Phone</label>
+                <input value={editOrgPhone} onChange={(e) => setEditOrgPhone(e.target.value)}
+                  className={fieldClass()} />
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Contact Email</label>
+              <input type="email" value={editOrgEmail} onChange={(e) => setEditOrgEmail(e.target.value)}
+                className={fieldClass(!!editOrgEmailErr)} />
+              {editOrgEmailErr && <p className="mt-1 text-xs text-red-500 font-body">{editOrgEmailErr}</p>}
+            </div>
+            <div>
+              <label className="text-xs font-body font-medium text-text-secondary uppercase tracking-wider">Address</label>
+              <input value={editOrgAddress} onChange={(e) => setEditOrgAddress(e.target.value)}
+                className={fieldClass()} />
+            </div>
+            {actionError && editingOrg && <p className="text-xs text-red-500 font-body">{actionError}</p>}
+            <button onClick={handleSaveOrg}
+              className="w-full py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors mt-2">
+              Save Changes
+            </button>
+          </div>
+        )}
       </Modal>
     </div>
   );

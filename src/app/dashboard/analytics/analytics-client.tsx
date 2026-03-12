@@ -42,8 +42,10 @@ export default function AnalyticsClient({
       futureDailyOverhead: parseFloat(futureOverhead) || 0,
       futurePanelsPerDay: parseFloat(futureVolume) || 0,
     }).then((res) => {
-      setPricingResult(res.pricingResult);
-      setAnalyticsResult(res.analyticsResult);
+      if (res.success && "pricingResult" in res) {
+        setPricingResult(res.pricingResult);
+        setAnalyticsResult(res.analyticsResult);
+      }
     });
   }, [selectedPanelId, currentOverhead, currentVolume, futureOverhead, futureVolume]);
 

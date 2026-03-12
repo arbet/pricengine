@@ -19,6 +19,7 @@ export default function CalculatorClient({ initialTests }: { initialTests: TestR
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [result, setResult] = useState<PricingResult | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const [calcError, setCalcError] = useState("");
 
   const filteredTests = useMemo(() => {
     if (!search) return initialTests;
@@ -49,11 +50,12 @@ export default function CalculatorClient({ initialTests }: { initialTests: TestR
   const handleCalculate = async () => {
     if (selectedTests.length === 0) return;
     setCalculating(true);
-    try {
-      const res = await calculatePrice({ testIds: Array.from(selectedIds) });
+    setCalcError("");
+    const res = await calculatePrice({ testIds: Array.from(selectedIds) });
+    if (res.success) {
       setResult(res);
-    } catch {
-      // handle error silently
+    } else if ("error" in res) {
+      setCalcError(res.error);
     }
     setCalculating(false);
   };
@@ -155,6 +157,7 @@ export default function CalculatorClient({ initialTests }: { initialTests: TestR
                     ))}
                   </div>
                 )}
+                {calcError && <p className="text-xs text-red-500 font-body mb-2">{calcError}</p>}
                 <button
                   onClick={handleCalculate}
                   disabled={selectedTests.length === 0 || calculating}
