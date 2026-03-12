@@ -1,5 +1,5 @@
 FROM mcr.microsoft.com/playwright/python:v1.52.0-noble
 
-RUN pip install playwright==1.52.0
+RUN pip install playwright==1.52.0 openpyxl==3.1.5
 
 WORKDIR /app

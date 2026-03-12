@@ -16,6 +16,11 @@ SUITES = [
     "test_calculator.py",
     "test_logs.py",
     "test_analytics.py",
+    "test_logout.py",
+    "test_user_management.py",
+    "test_bulk_upload.py",
+    "test_api.py",
+    "test_pricing_math.py",
 ]
 
 failed = []
