@@ -13,3 +13,4 @@ coverage
 src/generated/prisma
 test-results
 playwright-report
+__pycache__
