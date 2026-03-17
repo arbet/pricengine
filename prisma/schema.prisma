@@ -58,6 +58,7 @@ model User {
   archivedAt   DateTime? @map("archived_at")
 
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  pricingLogs  PricingLog[]
 
   @@map("users")
 }
@@ -113,8 +114,10 @@ model PricingLog {
   finalPrice     Decimal       @map("final_price") @db.Decimal(10, 2)
   source         PricingSource
   orgId          String        @map("org_id")
+  userId         String?       @map("user_id")
 
   organization Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  user         User?        @relation(fields: [userId], references: [id])
 
   @@index([orgId])
   @@index([timestamp])

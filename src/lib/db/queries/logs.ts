@@ -29,6 +29,7 @@ export async function findAllLogs(
   const [logs, total] = await Promise.all([
     prisma.pricingLog.findMany({
       where,
+      include: { user: { select: { id: true, name: true } } },
       orderBy: { timestamp: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
@@ -58,22 +59,24 @@ export async function searchLogsByTestIds(orgId: string, searchTestIds: string[]
       final_price: number;
       source: string;
       org_id: string;
+      user_name: string | null;
       relevance: number;
     }>
   >`
-    SELECT *,
+    SELECT pl.*, u.name as user_name,
       CASE
-        WHEN panel_test_ids @> ${searchTestIds}::text[]
-             AND array_length(panel_test_ids, 1) = ${searchTestIds.length}
+        WHEN pl.panel_test_ids @> ${searchTestIds}::text[]
+             AND array_length(pl.panel_test_ids, 1) = ${searchTestIds.length}
         THEN 2
-        WHEN panel_test_ids @> ${searchTestIds}::text[]
+        WHEN pl.panel_test_ids @> ${searchTestIds}::text[]
         THEN 1
         ELSE 0
       END as relevance
-    FROM pricing_logs
-    WHERE org_id = ${orgId}
-      AND panel_test_ids @> ${searchTestIds}::text[]
-    ORDER BY relevance DESC, timestamp DESC
+    FROM pricing_logs pl
+    LEFT JOIN users u ON u.id = pl.user_id
+    WHERE pl.org_id = ${orgId}
+      AND pl.panel_test_ids @> ${searchTestIds}::text[]
+    ORDER BY relevance DESC, pl.timestamp DESC
     LIMIT 50
   `;
 
@@ -85,6 +88,7 @@ export async function searchLogsByTestIds(orgId: string, searchTestIds: string[]
     finalPrice: Number(l.final_price),
     source: l.source,
     orgId: l.org_id,
+    userName: l.user_name,
     relevance: Number(l.relevance),
   }));
 }

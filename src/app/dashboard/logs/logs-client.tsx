@@ -10,6 +10,7 @@ interface LogRow {
   panelTestNames: string[];
   finalPrice: number | string;
   source: string;
+  userName: string | null;
 }
 
 export default function LogsClient({ initialLogs }: { initialLogs: LogRow[] }) {
@@ -120,6 +121,7 @@ export default function LogsClient({ initialLogs }: { initialLogs: LogRow[] }) {
               <tr className="border-b border-border bg-surface">
                 <th className="text-left px-6 py-3 text-xs font-body font-medium text-text-muted uppercase tracking-wider">Timestamp</th>
                 <th className="text-left px-6 py-3 text-xs font-body font-medium text-text-muted uppercase tracking-wider">Panel Composition</th>
+                <th className="text-left px-6 py-3 text-xs font-body font-medium text-text-muted uppercase tracking-wider">User</th>
                 <th className="text-left px-6 py-3 text-xs font-body font-medium text-text-muted uppercase tracking-wider">Source</th>
                 <th className="text-right px-6 py-3 text-xs font-body font-medium text-text-muted uppercase tracking-wider">Final Price</th>
               </tr>
@@ -142,6 +144,11 @@ export default function LogsClient({ initialLogs }: { initialLogs: LogRow[] }) {
                     </div>
                   </td>
                   <td className="px-6 py-3.5">
+                    <span className="text-sm font-body text-text-secondary">
+                      {log.userName ?? (log.source === "api" ? "API" : "\u2014")}
+                    </span>
+                  </td>
+                  <td className="px-6 py-3.5">
                     <span className={`text-xs font-body font-medium px-2 py-1 rounded-md ${
                       log.source === "calculator" ? "bg-accent-muted text-accent" : "bg-warning-light text-warning"
                     }`}>
@@ -155,7 +162,7 @@ export default function LogsClient({ initialLogs }: { initialLogs: LogRow[] }) {
               ))}
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center text-sm text-text-muted font-body">
+                  <td colSpan={5} className="px-6 py-12 text-center text-sm text-text-muted font-body">
                     No log entries match your filters.
                   </td>
                 </tr>

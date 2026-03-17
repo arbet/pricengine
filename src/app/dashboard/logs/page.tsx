@@ -10,5 +10,10 @@ export default async function LogsPage() {
 
   const { logs } = await findAllLogs(user.orgId);
 
-  return <LogsClient initialLogs={JSON.parse(JSON.stringify(logs))} />;
+  const serialized = JSON.parse(JSON.stringify(logs)).map((log: Record<string, unknown>) => ({
+    ...log,
+    userName: (log.user as { name: string } | null)?.name ?? null,
+  }));
+
+  return <LogsClient initialLogs={serialized} />;
 }

@@ -54,6 +54,7 @@ export async function calculatePrice(data: { testIds: string[] }) {
         finalPrice: result.totalPrice,
         source: "calculator",
         orgId: user.orgId,
+        userId: user.id,
       },
     });
 
