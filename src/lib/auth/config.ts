@@ -20,7 +20,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           include: { organization: { select: { name: true } } },
         });
 
-        if (!user) return null;
+        if (!user || user.archivedAt) return null;
 
         const isValid = await compare(
           credentials.password as string,

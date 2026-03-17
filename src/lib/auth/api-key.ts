@@ -12,5 +12,7 @@ export async function validateApiKey(authHeader: string | null) {
     where: { apiKey },
   });
 
+  if (!org || org.archivedAt) return null;
+
   return org;
 }

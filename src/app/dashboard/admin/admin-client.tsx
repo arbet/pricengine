@@ -7,10 +7,12 @@ import { getRoleName } from "@/context/auth-context";
 import {
   createOrganization,
   updateOrganization,
-  deleteOrganization,
+  archiveOrganization,
+  restoreOrganization,
   createUser,
   updateUser,
-  removeUser,
+  archiveUser,
+  restoreUser,
 } from "@/lib/db/actions/admin-actions";
 
 interface OrgRow {
@@ -21,6 +23,7 @@ interface OrgRow {
   phone: string | null;
   address: string | null;
   createdAt: string;
+  archivedAt: string | null;
   _count: { users: number; labTests: number };
 }
 
@@ -30,6 +33,7 @@ interface UserRow {
   email: string;
   role: string;
   orgId: string | null;
+  archivedAt: string | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -48,8 +52,9 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   const [expandedOrg, setExpandedOrg] = useState<string | null>(null);
   const [showAddOrg, setShowAddOrg] = useState(false);
   const [editingOrg, setEditingOrg] = useState<OrgRow | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [removeUserConfirmId, setRemoveUserConfirmId] = useState<string | null>(null);
+  const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null);
+  const [archiveUserConfirmId, setArchiveUserConfirmId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   // Add Org form
   const [formName, setFormName] = useState("");
@@ -89,7 +94,12 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
 
   const [actionError, setActionError] = useState("");
 
-  const orgUsers = (orgId: string) => users.filter((u) => u.orgId === orgId);
+  const activeOrgs = orgs.filter((o) => !o.archivedAt);
+  const archivedOrgs = orgs.filter((o) => !!o.archivedAt);
+  const displayedOrgs = showArchived ? orgs : activeOrgs;
+
+  const orgUsers = (orgId: string) => users.filter((u) => u.orgId === orgId && !u.archivedAt);
+  const archivedOrgUsers = (orgId: string) => users.filter((u) => u.orgId === orgId && !!u.archivedAt);
 
   // --- Add Org validation ---
   const orgNameErr = orgAttempted && !formName.trim() ? "Organization name is required" : "";
@@ -103,7 +113,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     setActionError("");
     const result = await createOrganization({ name: formName, code: formCode, contactEmail: formEmail, phone: formPhone, address: formAddress });
     if (result.success && "org" in result) {
-      setOrgs([...orgs, { ...result.org, createdAt: result.org.createdAt as unknown as string, _count: { users: 0, labTests: 0 } } as unknown as OrgRow]);
+      setOrgs([...orgs, { ...result.org, createdAt: result.org.createdAt as unknown as string, archivedAt: null, _count: { users: 0, labTests: 0 } } as unknown as OrgRow]);
       setShowAddOrg(false);
       setFormName(""); setFormCode(""); setFormEmail(""); setFormPhone(""); setFormAddress(""); setOrgAttempted(false);
     } else if (!result.success && "error" in result) {
@@ -141,16 +151,27 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     }
   };
 
-  const handleDeleteOrg = async (orgId: string) => {
-    const result = await deleteOrganization(orgId);
+  const handleArchiveOrg = async (orgId: string) => {
+    const result = await archiveOrganization(orgId);
     if (result.success) {
-      setOrgs(orgs.filter((o) => o.id !== orgId));
-      setUsers(users.filter((u) => u.orgId !== orgId));
-      setDeleteConfirmId(null);
+      const now = new Date().toISOString();
+      setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, archivedAt: now } : o)));
+      setUsers(users.map((u) => (u.orgId === orgId && !u.archivedAt ? { ...u, archivedAt: now } : u)));
+      setArchiveConfirmId(null);
       if (expandedOrg === orgId) setExpandedOrg(null);
     } else if ("error" in result) {
       setActionError(result.error);
-      setDeleteConfirmId(null);
+      setArchiveConfirmId(null);
+    }
+  };
+
+  const handleRestoreOrg = async (orgId: string) => {
+    const result = await restoreOrganization(orgId);
+    if (result.success) {
+      setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, archivedAt: null } : o)));
+      setUsers(users.map((u) => (u.orgId === orgId ? { ...u, archivedAt: null } : u)));
+    } else if ("error" in result) {
+      setActionError(result.error);
     }
   };
 
@@ -166,7 +187,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     setActionError("");
     const result = await createUser({ name: userFormName, email: userFormEmail, password: userFormPassword, role: userFormRole, orgId: expandedOrg });
     if (result.success && "user" in result) {
-      setUsers([...users, result.user as UserRow]);
+      setUsers([...users, { ...result.user, archivedAt: null } as UserRow]);
       setShowAddUser(false);
       setUserFormName(""); setUserFormEmail(""); setUserFormRole("lab_employee"); setUserFormPassword(""); setUserFormShowPw(false); setUserAttempted(false);
     } else if (!result.success && "error" in result) {
@@ -201,21 +222,30 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
       ...(editPassword ? { password: editPassword } : {}),
     });
     if (result.success && "user" in result) {
-      setUsers(users.map((u) => (u.id === editingUser.id ? result.user as UserRow : u)));
+      setUsers(users.map((u) => (u.id === editingUser.id ? { ...result.user, archivedAt: u.archivedAt } as UserRow : u)));
       setEditingUser(null);
     } else if (!result.success && "error" in result) {
       setEditPwError(result.error);
     }
   };
 
-  const handleRemoveUser = async (userId: string) => {
-    const result = await removeUser(userId);
+  const handleArchiveUser = async (userId: string) => {
+    const result = await archiveUser(userId);
     if (result.success) {
-      setUsers(users.filter((u) => u.id !== userId));
-      setRemoveUserConfirmId(null);
+      setUsers(users.map((u) => (u.id === userId ? { ...u, archivedAt: new Date().toISOString() } : u)));
+      setArchiveUserConfirmId(null);
     } else if ("error" in result) {
       setActionError(result.error);
-      setRemoveUserConfirmId(null);
+      setArchiveUserConfirmId(null);
+    }
+  };
+
+  const handleRestoreUser = async (userId: string) => {
+    const result = await restoreUser(userId);
+    if (result.success) {
+      setUsers(users.map((u) => (u.id === userId ? { ...u, archivedAt: null } : u)));
+    } else if ("error" in result) {
+      setActionError(result.error);
     }
   };
 
@@ -224,7 +254,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     setShowAddUser(false);
   };
 
-  const totalUsers = users.length;
+  const activeUsers = users.filter((u) => !u.archivedAt);
 
   return (
     <div>
@@ -234,44 +264,64 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
         <div className="grid grid-cols-3 gap-4 mb-6 animate-fade-in">
           <div className="bg-surface-raised rounded-xl border border-border p-5">
             <p className="text-xs font-body font-medium text-text-muted uppercase tracking-wider">Organizations</p>
-            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{orgs.length}</p>
+            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{activeOrgs.length}</p>
           </div>
           <div className="bg-surface-raised rounded-xl border border-border p-5">
             <p className="text-xs font-body font-medium text-text-muted uppercase tracking-wider">Total Users</p>
-            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{totalUsers}</p>
+            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{activeUsers.length}</p>
           </div>
           <div className="bg-surface-raised rounded-xl border border-border p-5">
             <p className="text-xs font-body font-medium text-text-muted uppercase tracking-wider">Total Tests</p>
-            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{orgs.reduce((sum, o) => sum + o._count.labTests, 0)}</p>
+            <p className="font-mono text-3xl font-bold text-text-primary mt-2">{activeOrgs.reduce((sum, o) => sum + o._count.labTests, 0)}</p>
           </div>
         </div>
 
         {/* Toolbar */}
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-display font-semibold text-base text-text-primary">All Organizations</h2>
-          <button onClick={() => { setActionError(""); setOrgAttempted(false); setShowAddOrg(true); }}
-            className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors flex items-center gap-2">
-            <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
-            Add Organization
-          </button>
+          <div className="flex items-center gap-3">
+            {archivedOrgs.length > 0 && (
+              <button onClick={() => setShowArchived(!showArchived)}
+                className={`px-3 py-2 rounded-lg text-xs font-body font-semibold transition-colors flex items-center gap-2 ${showArchived ? "bg-amber-500/10 text-amber-500 border border-amber-500/30" : "text-text-muted hover:text-text-secondary border border-border"}`}>
+                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+                {showArchived ? `Hide Archived (${archivedOrgs.length})` : `Show Archived (${archivedOrgs.length})`}
+              </button>
+            )}
+            <button onClick={() => { setActionError(""); setOrgAttempted(false); setShowAddOrg(true); }}
+              className="px-4 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors flex items-center gap-2">
+              <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
+              Add Organization
+            </button>
+          </div>
         </div>
 
         {/* Org accordion list */}
         <div className="space-y-2">
-          {orgs.map((org) => {
+          {displayedOrgs.map((org) => {
             const isExpanded = expandedOrg === org.id;
+            const isArchived = !!org.archivedAt;
             const members = orgUsers(org.id);
+            const archivedMembers = archivedOrgUsers(org.id);
             return (
-              <div key={org.id} className="bg-surface-raised rounded-xl border border-border overflow-hidden transition-all">
+              <div key={org.id} className={`bg-surface-raised rounded-xl border overflow-hidden transition-all ${isArchived ? "border-amber-500/30 opacity-75" : "border-border"}`}>
                 <button onClick={() => toggleOrg(org.id)} className="w-full px-5 py-4 flex items-center justify-between hover:bg-surface transition-colors text-left">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-lg bg-surface border border-border flex items-center justify-center shrink-0">
-                      <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-accent">
-                        <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M9 22V12h6v10"/>
-                      </svg>
+                    <div className={`w-10 h-10 rounded-lg border flex items-center justify-center shrink-0 ${isArchived ? "bg-amber-500/5 border-amber-500/20" : "bg-surface border-border"}`}>
+                      {isArchived ? (
+                        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-amber-500">
+                          <path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/>
+                        </svg>
+                      ) : (
+                        <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24" className="text-accent">
+                          <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><path d="M9 22V12h6v10"/>
+                        </svg>
+                      )}
                     </div>
                     <div>
-                      <div className="font-display font-semibold text-text-primary">{org.name}</div>
+                      <div className="flex items-center gap-2">
+                        <span className={`font-display font-semibold ${isArchived ? "text-text-muted" : "text-text-primary"}`}>{org.name}</span>
+                        {isArchived && <span className="text-[10px] font-body font-semibold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500 uppercase tracking-wider">Archived</span>}
+                      </div>
                       <div className="font-mono text-xs text-accent mt-0.5">{org.code}</div>
                     </div>
                   </div>
@@ -296,23 +346,27 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                           <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Code</p><p className="text-sm font-mono text-accent mt-0.5">{org.code}</p></div>
                           <div><p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider">Address</p><p className="text-sm font-body text-text-secondary mt-0.5">{org.address || "—"}</p></div>
                         </div>
-                        <button onClick={() => openEditOrg(org)} title="Edit organization" className="p-1.5 text-text-muted hover:text-accent hover:bg-accent-muted rounded-lg transition-colors shrink-0 ml-2">
-                          <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                        </button>
+                        {!isArchived && (
+                          <button onClick={() => openEditOrg(org)} title="Edit organization" className="p-1.5 text-text-muted hover:text-accent hover:bg-accent-muted rounded-lg transition-colors shrink-0 ml-2">
+                            <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          </button>
+                        )}
                       </div>
                     </div>
 
                     <div className="px-5 pb-5 border-t border-border pt-4">
                       <div className="flex items-center justify-between mb-3">
                         <h4 className="font-display font-semibold text-sm text-text-primary">Users &amp; Roles <span className="ml-2 font-mono text-xs text-text-muted font-normal">({members.length})</span></h4>
-                        <button onClick={() => { setActionError(""); setUserAttempted(false); setShowAddUser(!showAddUser); }}
-                          className="px-3 py-1.5 text-xs font-body font-semibold text-accent hover:bg-accent-muted rounded-lg transition-colors flex items-center gap-1.5">
-                          <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
-                          Add User
-                        </button>
+                        {!isArchived && (
+                          <button onClick={() => { setActionError(""); setUserAttempted(false); setShowAddUser(!showAddUser); }}
+                            className="px-3 py-1.5 text-xs font-body font-semibold text-accent hover:bg-accent-muted rounded-lg transition-colors flex items-center gap-1.5">
+                            <svg width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" strokeLinecap="round" /></svg>
+                            Add User
+                          </button>
+                        )}
                       </div>
 
-                      {showAddUser && (
+                      {showAddUser && !isArchived && (
                         <div className="mb-3 p-4 rounded-xl border border-accent/30 bg-accent-muted/20 space-y-3">
                           <p className="text-xs font-body font-semibold text-text-secondary uppercase tracking-wider">New User</p>
                           <div className="grid grid-cols-2 gap-3">
@@ -388,8 +442,8 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                                       <button onClick={() => openEditUser(u)} title="Edit user" className="p-1.5 text-text-muted hover:text-accent hover:bg-accent-muted rounded-lg transition-colors">
                                         <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                       </button>
-                                      <button onClick={() => setRemoveUserConfirmId(u.id)} title="Remove user" className="p-1.5 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors">
-                                        <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                                      <button onClick={() => setArchiveUserConfirmId(u.id)} title="Archive user" className="p-1.5 text-amber-400 hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors">
+                                        <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
                                       </button>
                                     </div>
                                   </td>
@@ -402,12 +456,48 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                         <div className="py-6 text-center text-sm text-text-muted font-body border border-dashed border-border rounded-xl">No users assigned yet.</div>
                       )}
 
+                      {/* Archived users within this org */}
+                      {archivedMembers.length > 0 && (
+                        <div className="mt-4">
+                          <h4 className="font-display font-semibold text-sm text-amber-500 mb-2">Archived Users <span className="ml-1 font-mono text-xs text-text-muted font-normal">({archivedMembers.length})</span></h4>
+                          <div className="border border-amber-500/20 rounded-xl overflow-hidden">
+                            <table className="w-full text-sm">
+                              <tbody>
+                                {archivedMembers.map((u) => (
+                                  <tr key={u.id} className="border-b border-amber-500/10 last:border-0 opacity-60">
+                                    <td className="px-4 py-2.5 font-body text-text-muted">{u.name}</td>
+                                    <td className="px-4 py-2.5 font-body text-text-muted text-xs">{u.email}</td>
+                                    <td className="px-4 py-2.5">
+                                      <span className="text-xs font-body font-medium px-2 py-1 rounded-md bg-amber-500/10 text-amber-500">{getRoleName(u.role)}</span>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right">
+                                      <button onClick={() => handleRestoreUser(u.id)} title="Restore user"
+                                        className="px-2.5 py-1 text-xs font-body font-semibold text-accent hover:bg-accent-muted rounded-lg transition-colors">
+                                        Restore
+                                      </button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      )}
+
                       <div className="mt-4 pt-4 border-t border-border">
-                        <button onClick={() => setDeleteConfirmId(org.id)}
-                          className="px-4 py-2 rounded-lg border border-red-500/40 text-red-500 text-xs font-body font-semibold hover:bg-red-500/10 transition-colors flex items-center gap-2">
-                          <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-                          Delete Organization
-                        </button>
+                        {isArchived ? (
+                          <button onClick={() => handleRestoreOrg(org.id)}
+                            className="px-4 py-2 rounded-lg border border-accent/40 text-accent text-xs font-body font-semibold hover:bg-accent-muted transition-colors flex items-center gap-2">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-11.36L1 10"/></svg>
+                            Restore Organization
+                          </button>
+                        ) : (
+                          <button onClick={() => setArchiveConfirmId(org.id)}
+                            className="px-4 py-2 rounded-lg border border-amber-500/40 text-amber-500 text-xs font-body font-semibold hover:bg-amber-500/10 transition-colors flex items-center gap-2">
+                            <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 8v13H3V8"/><path d="M1 3h22v5H1z"/><path d="M10 12h4"/></svg>
+                            Archive Organization
+                          </button>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -418,42 +508,43 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      <Modal open={!!deleteConfirmId} onClose={() => setDeleteConfirmId(null)} title="Delete Organization" width="max-w-md">
-        {deleteConfirmId && (() => {
-          const org = orgs.find((o) => o.id === deleteConfirmId);
-          const affectedUsers = orgUsers(deleteConfirmId).length;
+      {/* Archive Org Confirmation Modal */}
+      <Modal open={!!archiveConfirmId} onClose={() => setArchiveConfirmId(null)} title="Archive Organization" width="max-w-md">
+        {archiveConfirmId && (() => {
+          const org = orgs.find((o) => o.id === archiveConfirmId);
+          const affectedUsers = orgUsers(archiveConfirmId).length;
           return (
             <div className="space-y-4">
               <p className="text-sm font-body text-text-secondary">
-                Are you sure you want to delete <span className="font-semibold text-text-primary">{org?.name}</span>?
-                This will permanently remove the organization{affectedUsers > 0 && <> and <span className="font-semibold text-red-400">{affectedUsers} user{affectedUsers > 1 ? "s" : ""}</span></>}.
+                Are you sure you want to archive <span className="font-semibold text-text-primary">{org?.name}</span>?
+                {affectedUsers > 0 && <> This will also archive <span className="font-semibold text-amber-500">{affectedUsers} user{affectedUsers > 1 ? "s" : ""}</span>.</>}
+                {" "}Archived organizations and users cannot log in or use the API, but their data is preserved.
               </p>
               <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirmId(null)}
+                <button onClick={() => setArchiveConfirmId(null)}
                   className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
-                <button onClick={() => handleDeleteOrg(deleteConfirmId)}
-                  className="flex-1 py-2.5 rounded-lg bg-red-500 text-white text-sm font-body font-semibold hover:bg-red-600 transition-colors">Delete</button>
+                <button onClick={() => handleArchiveOrg(archiveConfirmId)}
+                  className="flex-1 py-2.5 rounded-lg bg-amber-500 text-white text-sm font-body font-semibold hover:bg-amber-600 transition-colors">Archive</button>
               </div>
             </div>
           );
         })()}
       </Modal>
 
-      {/* Remove User Confirmation Modal */}
-      <Modal open={!!removeUserConfirmId} onClose={() => setRemoveUserConfirmId(null)} title="Remove User" width="max-w-md">
-        {removeUserConfirmId && (() => {
-          const user = users.find((u) => u.id === removeUserConfirmId);
+      {/* Archive User Confirmation Modal */}
+      <Modal open={!!archiveUserConfirmId} onClose={() => setArchiveUserConfirmId(null)} title="Archive User" width="max-w-md">
+        {archiveUserConfirmId && (() => {
+          const user = users.find((u) => u.id === archiveUserConfirmId);
           return (
             <div className="space-y-4">
               <p className="text-sm font-body text-text-secondary">
-                Are you sure you want to remove <span className="font-semibold text-text-primary">{user?.name}</span> ({user?.email})?
+                Are you sure you want to archive <span className="font-semibold text-text-primary">{user?.name}</span> ({user?.email})? They will no longer be able to log in.
               </p>
               <div className="flex gap-3">
-                <button onClick={() => setRemoveUserConfirmId(null)}
+                <button onClick={() => setArchiveUserConfirmId(null)}
                   className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
-                <button onClick={() => handleRemoveUser(removeUserConfirmId)}
-                  className="flex-1 py-2.5 rounded-lg bg-red-500 text-white text-sm font-body font-semibold hover:bg-red-600 transition-colors">Remove</button>
+                <button onClick={() => handleArchiveUser(archiveUserConfirmId)}
+                  className="flex-1 py-2.5 rounded-lg bg-amber-500 text-white text-sm font-body font-semibold hover:bg-amber-600 transition-colors">Archive</button>
               </div>
             </div>
           );

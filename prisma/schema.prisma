@@ -36,6 +36,7 @@ model Organization {
   apiKey              String?  @unique @map("api_key")
   createdAt           DateTime @default(now()) @map("created_at")
   updatedAt           DateTime @updatedAt @map("updated_at")
+  archivedAt          DateTime? @map("archived_at")
 
   users       User[]
   labTests    LabTest[]
@@ -54,6 +55,7 @@ model User {
   orgId        String?  @map("org_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
+  archivedAt   DateTime? @map("archived_at")
 
   organization Organization? @relation(fields: [orgId], references: [id], onDelete: Cascade)
 

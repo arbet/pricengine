@@ -9,5 +9,5 @@ export async function findUserById(id: string) {
 }
 
 export async function findUsersByOrgId(orgId: string) {
-  return prisma.user.findMany({ where: { orgId } });
+  return prisma.user.findMany({ where: { orgId, archivedAt: null } });
 }

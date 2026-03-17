@@ -75,11 +75,30 @@ export async function updateOrganization(data: {
   }
 }
 
-export async function deleteOrganization(id: string) {
+export async function archiveOrganization(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.organization.delete({ where: { id } });
+    await prisma.$transaction([
+      prisma.organization.update({ where: { id }, data: { archivedAt: new Date() } }),
+      prisma.user.updateMany({ where: { orgId: id, archivedAt: null }, data: { archivedAt: new Date() } }),
+    ]);
+
+    revalidatePath("/dashboard/admin");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
+}
+
+export async function restoreOrganization(id: string) {
+  try {
+    await getAdminSession();
+
+    await prisma.$transaction([
+      prisma.organization.update({ where: { id }, data: { archivedAt: null } }),
+      prisma.user.updateMany({ where: { orgId: id }, data: { archivedAt: null } }),
+    ]);
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };
@@ -145,11 +164,24 @@ export async function updateUser(data: {
   }
 }
 
-export async function removeUser(id: string) {
+export async function archiveUser(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.user.delete({ where: { id } });
+    await prisma.user.update({ where: { id }, data: { archivedAt: new Date() } });
+
+    revalidatePath("/dashboard/admin");
+    return { success: true as const };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
+}
+
+export async function restoreUser(id: string) {
+  try {
+    await getAdminSession();
+
+    await prisma.user.update({ where: { id }, data: { archivedAt: null } });
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };
