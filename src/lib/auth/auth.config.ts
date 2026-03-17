@@ -18,6 +18,9 @@ export const authConfig = {
       return token;
     },
     async session({ session, token }) {
+      if (!token.userId) {
+        return { ...session, user: undefined } as unknown as typeof session;
+      }
       if (session.user) {
         session.user.id = token.userId as string;
         (session.user as { role: string }).role = token.role as string;

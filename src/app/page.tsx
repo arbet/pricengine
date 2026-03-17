@@ -25,7 +25,13 @@ export default function LoginPage() {
     setLoading(false);
 
     if (result?.error) {
-      setError("Invalid email or password.");
+      if (result.code === "organization_archived") {
+        setError("Your organization has been archived. Contact your administrator.");
+      } else if (result.code === "user_archived") {
+        setError("Your account has been archived. Contact your administrator.");
+      } else {
+        setError("Invalid email or password.");
+      }
     } else {
       router.push("/dashboard");
       router.refresh();

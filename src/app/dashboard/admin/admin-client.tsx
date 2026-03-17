@@ -54,6 +54,8 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   const [editingOrg, setEditingOrg] = useState<OrgRow | null>(null);
   const [archiveConfirmId, setArchiveConfirmId] = useState<string | null>(null);
   const [archiveUserConfirmId, setArchiveUserConfirmId] = useState<string | null>(null);
+  const [restoreConfirmId, setRestoreConfirmId] = useState<string | null>(null);
+  const [restoreUserConfirmId, setRestoreUserConfirmId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
 
   // Add Org form
@@ -170,8 +172,10 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     if (result.success) {
       setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, archivedAt: null } : o)));
       setUsers(users.map((u) => (u.orgId === orgId ? { ...u, archivedAt: null } : u)));
+      setRestoreConfirmId(null);
     } else if ("error" in result) {
       setActionError(result.error);
+      setRestoreConfirmId(null);
     }
   };
 
@@ -244,8 +248,10 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     const result = await restoreUser(userId);
     if (result.success) {
       setUsers(users.map((u) => (u.id === userId ? { ...u, archivedAt: null } : u)));
+      setRestoreUserConfirmId(null);
     } else if ("error" in result) {
       setActionError(result.error);
+      setRestoreUserConfirmId(null);
     }
   };
 
@@ -471,7 +477,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                                       <span className="text-xs font-body font-medium px-2 py-1 rounded-md bg-amber-500/10 text-amber-500">{getRoleName(u.role)}</span>
                                     </td>
                                     <td className="px-4 py-2.5 text-right">
-                                      <button onClick={() => handleRestoreUser(u.id)} title="Restore user"
+                                      <button onClick={() => setRestoreUserConfirmId(u.id)} title="Restore user"
                                         className="px-2.5 py-1 text-xs font-body font-semibold text-accent hover:bg-accent-muted rounded-lg transition-colors">
                                         Restore
                                       </button>
@@ -486,7 +492,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
 
                       <div className="mt-4 pt-4 border-t border-border">
                         {isArchived ? (
-                          <button onClick={() => handleRestoreOrg(org.id)}
+                          <button onClick={() => setRestoreConfirmId(org.id)}
                             className="px-4 py-2 rounded-lg border border-accent/40 text-accent text-xs font-body font-semibold hover:bg-accent-muted transition-colors flex items-center gap-2">
                             <svg width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 105.64-11.36L1 10"/></svg>
                             Restore Organization
@@ -545,6 +551,49 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                   className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
                 <button onClick={() => handleArchiveUser(archiveUserConfirmId)}
                   className="flex-1 py-2.5 rounded-lg bg-amber-500 text-white text-sm font-body font-semibold hover:bg-amber-600 transition-colors">Archive</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Restore Org Confirmation Modal */}
+      <Modal open={!!restoreConfirmId} onClose={() => setRestoreConfirmId(null)} title="Restore Organization" width="max-w-md">
+        {restoreConfirmId && (() => {
+          const org = orgs.find((o) => o.id === restoreConfirmId);
+          const affectedUsers = archivedOrgUsers(restoreConfirmId).length;
+          return (
+            <div className="space-y-4">
+              <p className="text-sm font-body text-text-secondary">
+                Are you sure you want to restore <span className="font-semibold text-text-primary">{org?.name}</span>?
+                {affectedUsers > 0 && <> This will also restore <span className="font-semibold text-accent">{affectedUsers} user{affectedUsers > 1 ? "s" : ""}</span>.</>}
+                {" "}Restored organizations and users will be able to log in and use the API again.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setRestoreConfirmId(null)}
+                  className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
+                <button onClick={() => handleRestoreOrg(restoreConfirmId)}
+                  className="flex-1 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors">Restore</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Restore User Confirmation Modal */}
+      <Modal open={!!restoreUserConfirmId} onClose={() => setRestoreUserConfirmId(null)} title="Restore User" width="max-w-md">
+        {restoreUserConfirmId && (() => {
+          const user = users.find((u) => u.id === restoreUserConfirmId);
+          return (
+            <div className="space-y-4">
+              <p className="text-sm font-body text-text-secondary">
+                Are you sure you want to restore <span className="font-semibold text-text-primary">{user?.name}</span> ({user?.email})? They will be able to log in again.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setRestoreUserConfirmId(null)}
+                  className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
+                <button onClick={() => handleRestoreUser(restoreUserConfirmId)}
+                  className="flex-1 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors">Restore</button>
               </div>
             </div>
           );

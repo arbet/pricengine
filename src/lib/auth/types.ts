@@ -27,5 +27,6 @@ declare module "@auth/core/jwt" {
     orgId?: string | null;
     orgName?: string | null;
     userId?: string;
+    lastCheckedAt?: number;
   }
 }
