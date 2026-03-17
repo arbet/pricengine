@@ -7,6 +7,7 @@ out
 /src/generated/prisma
 .env.production.local
 *.log
+*.tsbuildinfo
 dist
 build
 coverage
