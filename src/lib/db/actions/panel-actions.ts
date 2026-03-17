@@ -33,7 +33,7 @@ export async function createPanel(data: { name: string; testIds: string[] }) {
     });
 
     revalidatePath("/dashboard/panels");
-    return { success: true as const, panel };
+    return { success: true as const, panel: JSON.parse(JSON.stringify(panel)) };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
@@ -69,7 +69,7 @@ export async function updatePanel(data: {
     });
 
     revalidatePath("/dashboard/panels");
-    return { success: true as const, panel };
+    return { success: true as const, panel: JSON.parse(JSON.stringify(panel)) };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
