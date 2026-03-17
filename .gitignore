@@ -15,3 +15,4 @@ src/generated/prisma
 test-results
 playwright-report
 __pycache__
+TESTING-GUIDE.md

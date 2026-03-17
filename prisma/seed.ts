@@ -3,11 +3,29 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { hashSync } from "bcryptjs";
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-const adapter = new PrismaPg(pool);
-const prisma = new PrismaClient({ adapter });
+const RLS_TABLES = ["organizations", "users", "lab_tests", "panels", "panel_tests", "pricing_logs"];
+
+async function disableRLS(pool: Pool) {
+  for (const table of RLS_TABLES) {
+    await pool.query(`ALTER TABLE "${table}" DISABLE ROW LEVEL SECURITY`);
+  }
+}
+
+async function enableRLS(pool: Pool) {
+  for (const table of RLS_TABLES) {
+    await pool.query(`ALTER TABLE "${table}" ENABLE ROW LEVEL SECURITY`);
+  }
+}
 
 async function main() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+
+  // Temporarily disable RLS for seeding
+  await disableRLS(pool);
+
+  const adapter = new PrismaPg(pool);
+  const prisma = new PrismaClient({ adapter });
+
   // --- Organizations ---
   const org1 = await prisma.organization.upsert({
     where: { code: "LCE" },
@@ -230,14 +248,21 @@ async function main() {
     });
   }
 
+  // Re-enable RLS after seeding
+  await enableRLS(pool);
+
   console.log("Seed complete: 3 orgs, 6 users, 20 tests, 4 panels, 6 log entries");
+
+  await prisma.$disconnect();
+  await pool.end();
 }
 
 main()
-  .catch((e) => {
+  .catch(async (e) => {
+    // Best-effort re-enable RLS on failure
+    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+    await enableRLS(pool).catch(() => {});
+    await pool.end();
     console.error(e);
     process.exit(1);
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
   });
