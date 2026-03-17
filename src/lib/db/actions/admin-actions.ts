@@ -164,6 +164,22 @@ export async function updateUser(data: {
   }
 }
 
+export async function regenerateApiKey(orgId: string) {
+  try {
+    await getAdminSession();
+
+    const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { code: true } });
+    const newKey = `${org.code.toLowerCase()}-${crypto.randomBytes(16).toString("hex")}`;
+
+    await prisma.organization.update({ where: { id: orgId }, data: { apiKey: newKey } });
+
+    revalidatePath("/dashboard/admin");
+    return { success: true as const, apiKey: newKey };
+  } catch (e) {
+    return { success: false as const, error: formatError(e) };
+  }
+}
+
 export async function archiveUser(id: string) {
   try {
     await getAdminSession();

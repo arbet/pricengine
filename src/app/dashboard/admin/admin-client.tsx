@@ -13,6 +13,7 @@ import {
   updateUser,
   archiveUser,
   restoreUser,
+  regenerateApiKey,
 } from "@/lib/db/actions/admin-actions";
 
 interface OrgRow {
@@ -22,6 +23,7 @@ interface OrgRow {
   contactEmail: string | null;
   phone: string | null;
   address: string | null;
+  apiKey: string | null;
   createdAt: string;
   archivedAt: string | null;
   _count: { users: number; labTests: number };
@@ -95,6 +97,11 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   const [editAttempted, setEditAttempted] = useState(false);
 
   const [actionError, setActionError] = useState("");
+
+  // API Key management
+  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+  const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
+  const [regenConfirmId, setRegenConfirmId] = useState<string | null>(null);
 
   const activeOrgs = orgs.filter((o) => !o.archivedAt);
   const archivedOrgs = orgs.filter((o) => !!o.archivedAt);
@@ -177,6 +184,36 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
       setActionError(result.error);
       setRestoreConfirmId(null);
     }
+  };
+
+  // --- API Key helpers ---
+  const toggleKeyReveal = (orgId: string) => {
+    setRevealedKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(orgId)) next.delete(orgId); else next.add(orgId);
+      return next;
+    });
+  };
+
+  const copyApiKey = async (org: OrgRow) => {
+    if (!org.apiKey) return;
+    await navigator.clipboard.writeText(org.apiKey);
+    setCopiedOrgId(org.id);
+    setTimeout(() => setCopiedOrgId((cur) => (cur === org.id ? null : cur)), 2000);
+  };
+
+  const handleRegenerateKey = async (orgId: string) => {
+    const result = await regenerateApiKey(orgId);
+    if (result.success && "apiKey" in result) {
+      setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, apiKey: result.apiKey } : o)));
+      setRevealedKeys((prev) => new Set(prev).add(orgId));
+    }
+    setRegenConfirmId(null);
+  };
+
+  const maskKey = (key: string) => {
+    const prefix = key.split("-")[0];
+    return `${prefix}-${"•".repeat(32)}`;
   };
 
   // --- Add User validation ---
@@ -358,6 +395,47 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                           </button>
                         )}
                       </div>
+                    </div>
+
+                    {/* API Key */}
+                    <div className="px-5 pb-4 border-t border-border pt-4">
+                      <p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider mb-1.5">API Key</p>
+                      {org.apiKey ? (
+                        <div className="flex items-center gap-2">
+                          <code className="font-mono text-sm text-text-secondary select-all">
+                            {revealedKeys.has(org.id) ? org.apiKey : maskKey(org.apiKey)}
+                          </code>
+                          <div className="flex items-center gap-1 ml-auto shrink-0">
+                            {/* Reveal toggle */}
+                            <button onClick={() => toggleKeyReveal(org.id)} title={revealedKeys.has(org.id) ? "Hide API key" : "Reveal API key"}
+                              className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-lg transition-colors">
+                              {revealedKeys.has(org.id) ? (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                              ) : (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                              )}
+                            </button>
+                            {/* Copy */}
+                            <button onClick={() => copyApiKey(org)} title="Copy API key"
+                              className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-lg transition-colors">
+                              {copiedOrgId === org.id ? (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
+                              ) : (
+                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                              )}
+                            </button>
+                            {/* Regenerate */}
+                            {!isArchived && (
+                              <button onClick={() => setRegenConfirmId(org.id)} title="Regenerate API key"
+                                className="p-1.5 text-text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors">
+                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm font-body text-text-muted">No API key generated</p>
+                      )}
                     </div>
 
                     <div className="px-5 pb-5 border-t border-border pt-4">
@@ -594,6 +672,27 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                   className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
                 <button onClick={() => handleRestoreUser(restoreUserConfirmId)}
                   className="flex-1 py-2.5 rounded-lg bg-accent text-white text-sm font-body font-semibold hover:bg-accent-light transition-colors">Restore</button>
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
+
+      {/* Regenerate API Key Confirmation Modal */}
+      <Modal open={!!regenConfirmId} onClose={() => setRegenConfirmId(null)} title="Regenerate API Key" width="max-w-md">
+        {regenConfirmId && (() => {
+          const org = orgs.find((o) => o.id === regenConfirmId);
+          return (
+            <div className="space-y-4">
+              <p className="text-sm font-body text-text-secondary">
+                Are you sure you want to regenerate the API key for <span className="font-semibold text-text-primary">{org?.name}</span>?
+                The current key will be permanently invalidated. Any integrations using the old key will stop working immediately.
+              </p>
+              <div className="flex gap-3">
+                <button onClick={() => setRegenConfirmId(null)}
+                  className="flex-1 py-2.5 rounded-lg border border-border text-sm font-body font-semibold text-text-secondary hover:text-text-primary hover:border-text-secondary transition-colors">Cancel</button>
+                <button onClick={() => handleRegenerateKey(regenConfirmId)}
+                  className="flex-1 py-2.5 rounded-lg bg-red-600 text-white text-sm font-body font-semibold hover:bg-red-700 transition-colors">Regenerate</button>
               </div>
             </div>
           );
