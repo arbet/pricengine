@@ -39,7 +39,7 @@ export async function createTest(data: {
     });
 
     revalidatePath("/dashboard/tests");
-    return { success: true as const, test };
+    return { success: true as const, test: { ...test, reagentCost: Number(test.reagentCost), listPrice: Number(test.listPrice) } };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
@@ -72,7 +72,7 @@ export async function updateTest(data: {
     });
 
     revalidatePath("/dashboard/tests");
-    return { success: true as const, test };
+    return { success: true as const, test: { ...test, reagentCost: Number(test.reagentCost), listPrice: Number(test.listPrice) } };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
