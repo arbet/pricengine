@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import Header from "@/components/header";
 import Modal from "@/components/modal";
 import { createTest, updateTest, deleteTest, uploadTestCatalog } from "@/lib/db/actions/test-actions";
@@ -14,7 +15,18 @@ interface LabTestRow {
   category: string | null;
 }
 
-export default function TestManagementClient({ initialTests }: { initialTests: LabTestRow[] }) {
+export default function TestManagementClient({
+  initialTests,
+  total,
+  page,
+  pageSize,
+}: {
+  initialTests: LabTestRow[];
+  total: number;
+  page: number;
+  pageSize: number;
+}) {
+  const router = useRouter();
   const [tests, setTests] = useState<LabTestRow[]>(initialTests);
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
@@ -121,6 +133,8 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
   };
 
   const num = (v: number | string) => Number(v);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const goToPage = (p: number) => router.push(`?page=${p}`);
 
   return (
     <div>
@@ -141,7 +155,9 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
                 className="pl-9 pr-4 py-2.5 rounded-lg border border-border bg-white text-sm font-body w-72 focus:outline-none focus:border-accent transition-colors"
               />
             </div>
-            <span className="text-sm text-text-muted font-body">{filtered.length} tests</span>
+            <span className="text-sm text-text-muted font-body">
+              {search ? `${filtered.length} on this page` : `${total} tests`}
+            </span>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -213,6 +229,55 @@ export default function TestManagementClient({ initialTests }: { initialTests: L
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4 animate-fade-in stagger-2 opacity-0">
+            <span className="text-sm text-text-muted font-body">
+              Page {page} of {totalPages} &mdash; {total} total tests
+            </span>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page <= 1}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-body text-text-secondary hover:bg-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Previous
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((p) => p === 1 || p === totalPages || Math.abs(p - page) <= 2)
+                .reduce<(number | "...")[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && p - (arr[idx - 1] as number) > 1) acc.push("...");
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === "..." ? (
+                    <span key={`ellipsis-${idx}`} className="px-2 text-text-muted text-sm">…</span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => goToPage(item as number)}
+                      className={`px-3 py-1.5 rounded-lg border text-sm font-body transition-colors ${
+                        item === page
+                          ? "bg-accent text-white border-accent"
+                          : "border-border text-text-secondary hover:bg-surface"
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page >= totalPages}
+                className="px-3 py-1.5 rounded-lg border border-border text-sm font-body text-text-secondary hover:bg-surface transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Add Test Modal */}

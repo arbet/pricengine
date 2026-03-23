@@ -3,12 +3,21 @@ import { auth } from "@/lib/auth/config";
 import { findAllTests } from "@/lib/db/queries/tests";
 import TestManagementClient from "./test-management-client";
 
-export default async function TestManagementPage() {
+export default async function TestManagementPage({ searchParams }: { searchParams: Promise<{ page?: string }> }) {
   const session = await auth();
   const user = session?.user as { role: string; orgId: string | null };
   if (!user?.orgId || user.role !== "lab_manager") redirect("/dashboard");
 
-  const { tests } = await findAllTests(user.orgId);
+  const { page: pageStr } = await searchParams;
+  const page = Math.max(1, parseInt(pageStr || "1", 10) || 1);
+  const { tests, total, pageSize } = await findAllTests(user.orgId, { page });
 
-  return <TestManagementClient initialTests={JSON.parse(JSON.stringify(tests))} />;
+  return (
+    <TestManagementClient
+      initialTests={JSON.parse(JSON.stringify(tests))}
+      total={total}
+      page={page}
+      pageSize={pageSize}
+    />
+  );
 }
