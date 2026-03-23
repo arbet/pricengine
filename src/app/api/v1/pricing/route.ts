@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       total_price: result.totalPrice,
-      currency: "USD",
+      currency: "CAD",
       breakdown: {
         anchor_test: {
           test_id: anchorDetail.testId,
@@ -128,7 +128,7 @@ export async function POST(request: NextRequest) {
           test_id: d.testId,
           test_name: d.testName,
           list_price: d.listPrice,
-          applied_price: d.finalPrice,
+          applied_price: Math.round(d.finalPrice * 100) / 100,
           reagent_cost: d.reagentCost,
           role: "add_on",
           pricing_method: d.pricingMethod,
