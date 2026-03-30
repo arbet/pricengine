@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/header";
 import Modal from "@/components/modal";
@@ -28,6 +28,11 @@ export default function TestManagementClient({
 }) {
   const router = useRouter();
   const [tests, setTests] = useState<LabTestRow[]>(initialTests);
+
+  useEffect(() => {
+    setTests(initialTests);
+  }, [initialTests]);
+
   const [search, setSearch] = useState("");
   const [showAddModal, setShowAddModal] = useState(false);
   const [editTest, setEditTest] = useState<LabTestRow | null>(null);
