@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Header from "@/components/header";
 import Modal from "@/components/modal";
@@ -20,11 +20,13 @@ export default function TestManagementClient({
   total,
   page,
   pageSize,
+  initialSearch,
 }: {
   initialTests: LabTestRow[];
   total: number;
   page: number;
   pageSize: number;
+  initialSearch: string;
 }) {
   const router = useRouter();
   const [tests, setTests] = useState<LabTestRow[]>(initialTests);
@@ -33,7 +35,7 @@ export default function TestManagementClient({
     setTests(initialTests);
   }, [initialTests]);
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editTest, setEditTest] = useState<LabTestRow | null>(null);
   const [showUpload, setShowUpload] = useState(false);
@@ -49,13 +51,23 @@ export default function TestManagementClient({
   const [formCategory, setFormCategory] = useState("");
   const [formError, setFormError] = useState("");
 
-  const filtered = useMemo(() => {
-    if (!search) return tests;
-    const q = search.toLowerCase();
-    return tests.filter(
-      (t) => t.testId.toLowerCase().includes(q) || t.name.toLowerCase().includes(q)
-    );
-  }, [tests, search]);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const navigateWithSearch = useCallback((query: string, p: number) => {
+    const params = new URLSearchParams();
+    if (p > 1) params.set("page", String(p));
+    if (query) params.set("search", query);
+    const qs = params.toString();
+    router.push(qs ? `?${qs}` : "?");
+  }, [router]);
+
+  const handleSearchChange = (value: string) => {
+    setSearch(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      navigateWithSearch(value, 1);
+    }, 300);
+  };
 
   const openAdd = () => {
     setFormTestId(""); setFormName(""); setFormReagent(""); setFormList(""); setFormCategory(""); setFormError("");
@@ -139,7 +151,7 @@ export default function TestManagementClient({
 
   const num = (v: number | string) => Number(v);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const goToPage = (p: number) => router.push(`?page=${p}`);
+  const goToPage = (p: number) => navigateWithSearch(search, p);
 
   return (
     <div>
@@ -156,12 +168,12 @@ export default function TestManagementClient({
                 type="text"
                 placeholder="Search by ID or name..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => handleSearchChange(e.target.value)}
                 className="pl-9 pr-4 py-2.5 rounded-lg border border-border bg-white text-sm font-body w-72 focus:outline-none focus:border-accent transition-colors"
               />
             </div>
             <span className="text-sm text-text-muted font-body">
-              {search ? `${filtered.length} on this page` : `${total} tests`}
+              {`${total} tests`}
             </span>
           </div>
           <div className="flex items-center gap-3">
@@ -200,7 +212,7 @@ export default function TestManagementClient({
               </tr>
             </thead>
             <tbody>
-              {filtered.map((test) => (
+              {tests.map((test) => (
                 <tr key={test.id} className="border-b border-border last:border-0 table-row-hover">
                   <td className="px-6 py-3.5 font-mono text-sm text-accent font-medium">{test.testId}</td>
                   <td className="px-6 py-3.5 text-sm font-body text-text-primary">{test.name}</td>
@@ -224,7 +236,7 @@ export default function TestManagementClient({
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
+              {tests.length === 0 && (
                 <tr>
                   <td colSpan={6} className="px-6 py-12 text-center text-sm text-text-muted font-body">
                     No tests match your search.
