@@ -25,12 +25,13 @@ export async function findAllTests(
     ...(category ? { category } : {}),
   };
 
+  const paginate = pageSize > 0;
+
   const [tests, total] = await Promise.all([
     prisma.labTest.findMany({
       where,
       orderBy: { testId: "asc" },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
+      ...(paginate ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     }),
     prisma.labTest.count({ where }),
   ]);

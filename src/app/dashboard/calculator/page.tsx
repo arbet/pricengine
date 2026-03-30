@@ -8,7 +8,7 @@ export default async function CalculatorPage() {
   const user = session?.user as { role: string; orgId: string | null };
   if (!user?.orgId || !["lab_manager", "lab_employee"].includes(user.role)) redirect("/dashboard");
 
-  const { tests } = await findAllTests(user.orgId);
+  const { tests } = await findAllTests(user.orgId, { pageSize: 0 });
 
   return <CalculatorClient initialTests={JSON.parse(JSON.stringify(tests))} />;
 }
