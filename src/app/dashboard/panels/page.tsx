@@ -11,7 +11,7 @@ export default async function PanelManagementPage() {
 
   const [panels, { tests }] = await Promise.all([
     findAllPanels(user.orgId),
-    findAllTests(user.orgId),
+    findAllTests(user.orgId, { pageSize: 0 }),
   ]);
 
   return (
