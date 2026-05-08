@@ -90,9 +90,9 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: "admin@pricengine.com" },
-    update: {},
+    update: { name: "Super Admin" },
     create: {
-      name: "Sarah Chen",
+      name: "Super Admin",
       email: "admin@pricengine.com",
       passwordHash: pw("admin123"),
       role: "super_admin",
