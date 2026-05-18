@@ -114,39 +114,6 @@ export function calculatePanelPrice(
   };
 }
 
-/**
- * Shapes a PricingResult into the `breakdown` object returned by the
- * external pricing API. Shared by the single-org and compare endpoints
- * so both expose an identical structure.
- */
-export function buildBreakdown(result: PricingResult) {
-  const anchor = result.tests.find((t) => t.role === "anchor")!;
-  const addOns = result.tests.filter((t) => t.role === "add_on");
-
-  return {
-    anchor_test: {
-      test_id: anchor.testId,
-      test_name: anchor.testName,
-      list_price: anchor.listPrice,
-      reagent_cost: anchor.reagentCost,
-      role: "anchor" as const,
-    },
-    add_on_tests: addOns.map((d) => ({
-      test_id: d.testId,
-      test_name: d.testName,
-      list_price: d.listPrice,
-      applied_price: Math.round(d.finalPrice * 100) / 100,
-      reagent_cost: d.reagentCost,
-      role: "add_on" as const,
-      pricing_method: d.pricingMethod,
-    })),
-    subtotal: result.subtotal,
-    donation: result.donation,
-    revenue_share: result.revenueShare,
-    fixed_charges: result.donation + result.revenueShare,
-  };
-}
-
 export interface AnalyticsInputs {
   currentDailyOverhead: number;
   currentPanelsPerDay: number;

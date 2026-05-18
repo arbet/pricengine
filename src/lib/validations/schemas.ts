@@ -66,20 +66,6 @@ export const updateOrgSchema = createOrgSchema.extend({
   id: z.string().uuid(),
 });
 
-// --- Super Admin Management ---
-export const createSuperAdminSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Valid email is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
-});
-
-export const updateSuperAdminSchema = z.object({
-  id: z.string().uuid(),
-  name: z.string().min(1).optional(),
-  email: z.string().email().optional(),
-  password: z.string().min(6).optional(),
-});
-
 // --- User Management ---
 export const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -100,16 +86,6 @@ export const updateUserSchema = z.object({
 // --- External API Request ---
 export const apiPricingRequestSchema = z.object({
   organization: z.string().min(1, "Organization identifier is required"),
-  test_ids: z.array(z.string()).min(1, "test_ids must be a non-empty array"),
-});
-
-// --- External API: Multi-Organization Comparison ---
-// Omit `organizations` to compare the panel across every organization.
-export const apiCompareRequestSchema = z.object({
-  organizations: z
-    .array(z.string().min(1, "Organization identifier cannot be empty"))
-    .min(1, "organizations must be a non-empty array")
-    .optional(),
   test_ids: z.array(z.string()).min(1, "test_ids must be a non-empty array"),
 });
 

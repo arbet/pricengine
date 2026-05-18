@@ -54,12 +54,6 @@ const AdminIcon = (
   </svg>
 );
 
-const ShieldIcon = (
-  <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.5" viewBox="0 0 24 24">
-    <path d="M12 2l8 4v6c0 5-3.4 8.6-8 10-4.6-1.4-8-5-8-10V6l8-4z" strokeLinecap="round" strokeLinejoin="round" />
-  </svg>
-);
-
 const navItems: NavItem[] = [
   { label: "Test Management", href: "/dashboard/tests", icon: FlaskIcon, roles: ["lab_manager"] },
   { label: "Panel Management", href: "/dashboard/panels", icon: PanelIcon, roles: ["lab_manager"] },
@@ -67,7 +61,6 @@ const navItems: NavItem[] = [
   { label: "Logs", href: "/dashboard/logs", icon: LogsIcon, roles: ["lab_manager"] },
   { label: "Analytics", href: "/dashboard/analytics", icon: ChartIcon, roles: ["lab_manager"] },
   { label: "Organizations", href: "/dashboard/admin", icon: AdminIcon, roles: ["super_admin"] },
-  { label: "Super Admins", href: "/dashboard/admin/super-admins", icon: ShieldIcon, roles: ["super_admin"] },
 ];
 
 export default function Sidebar() {

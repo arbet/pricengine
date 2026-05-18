@@ -2,14 +2,7 @@
 
 import { prisma } from "@/lib/db/client";
 import { auth } from "@/lib/auth/config";
-import {
-  createOrgSchema,
-  updateOrgSchema,
-  createUserSchema,
-  updateUserSchema,
-  createSuperAdminSchema,
-  updateSuperAdminSchema,
-} from "@/lib/validations/schemas";
+import { createOrgSchema, updateOrgSchema, createUserSchema, updateUserSchema } from "@/lib/validations/schemas";
 import { hashSync } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import crypto from "crypto";
@@ -207,120 +200,6 @@ export async function restoreUser(id: string) {
     await prisma.user.update({ where: { id }, data: { archivedAt: null } });
 
     revalidatePath("/dashboard/admin");
-    return { success: true as const };
-  } catch (e) {
-    return { success: false as const, error: formatError(e) };
-  }
-}
-
-// --- Super Admin management ---
-
-const superAdminSelect = {
-  id: true,
-  name: true,
-  email: true,
-  apiKey: true,
-  archivedAt: true,
-  createdAt: true,
-} as const;
-
-function generateSuperAdminKey() {
-  return `sadmin-${crypto.randomBytes(16).toString("hex")}`;
-}
-
-export async function createSuperAdmin(data: {
-  name: string;
-  email: string;
-  password: string;
-}) {
-  try {
-    await getAdminSession();
-    const parsed = createSuperAdminSchema.parse(data);
-
-    const admin = await prisma.user.create({
-      data: {
-        name: parsed.name,
-        email: parsed.email,
-        passwordHash: hashSync(parsed.password, 10),
-        role: "super_admin",
-        orgId: null,
-        apiKey: generateSuperAdminKey(),
-      },
-      select: superAdminSelect,
-    });
-
-    revalidatePath("/dashboard/admin/super-admins");
-    return { success: true as const, admin };
-  } catch (e) {
-    return { success: false as const, error: formatError(e) };
-  }
-}
-
-export async function updateSuperAdmin(data: {
-  id: string;
-  name?: string;
-  email?: string;
-  password?: string;
-}) {
-  try {
-    await getAdminSession();
-    const parsed = updateSuperAdminSchema.parse(data);
-
-    const updateData: Record<string, unknown> = {};
-    if (parsed.name) updateData.name = parsed.name;
-    if (parsed.email) updateData.email = parsed.email;
-    if (parsed.password) updateData.passwordHash = hashSync(parsed.password, 10);
-
-    const admin = await prisma.user.update({
-      where: { id: parsed.id },
-      data: updateData,
-      select: superAdminSelect,
-    });
-
-    revalidatePath("/dashboard/admin/super-admins");
-    return { success: true as const, admin };
-  } catch (e) {
-    return { success: false as const, error: formatError(e) };
-  }
-}
-
-export async function regenerateSuperAdminApiKey(id: string) {
-  try {
-    await getAdminSession();
-
-    const newKey = generateSuperAdminKey();
-    await prisma.user.update({ where: { id }, data: { apiKey: newKey } });
-
-    revalidatePath("/dashboard/admin/super-admins");
-    return { success: true as const, apiKey: newKey };
-  } catch (e) {
-    return { success: false as const, error: formatError(e) };
-  }
-}
-
-export async function archiveSuperAdmin(id: string) {
-  try {
-    const session = await getAdminSession();
-    if (session.id === id) {
-      throw new Error("You cannot archive your own account");
-    }
-
-    await prisma.user.update({ where: { id }, data: { archivedAt: new Date() } });
-
-    revalidatePath("/dashboard/admin/super-admins");
-    return { success: true as const };
-  } catch (e) {
-    return { success: false as const, error: formatError(e) };
-  }
-}
-
-export async function restoreSuperAdmin(id: string) {
-  try {
-    await getAdminSession();
-
-    await prisma.user.update({ where: { id }, data: { archivedAt: null } });
-
-    revalidatePath("/dashboard/admin/super-admins");
     return { success: true as const };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
