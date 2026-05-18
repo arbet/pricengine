@@ -90,13 +90,14 @@ async function main() {
 
   await prisma.user.upsert({
     where: { email: "admin@pricengine.com" },
-    update: { name: "Super Admin" },
+    update: { name: "Super Admin", apiKey: "sadmin-api-key-2026-secret" },
     create: {
       name: "Super Admin",
       email: "admin@pricengine.com",
       passwordHash: pw("admin123"),
       role: "super_admin",
       orgId: null,
+      apiKey: "sadmin-api-key-2026-secret",
     },
   });
 

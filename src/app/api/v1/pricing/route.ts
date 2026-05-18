@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { validateApiKey } from "@/lib/auth/api-key";
 import { apiPricingRequestSchema } from "@/lib/validations/schemas";
-import { calculatePanelPrice, PricingConfig, PricingTestInput } from "@/lib/pricing";
+import { buildBreakdown, calculatePanelPrice, PricingConfig, PricingTestInput } from "@/lib/pricing";
 
 export async function POST(request: NextRequest) {
   try {
@@ -110,34 +110,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Build response per contract
-    const anchorDetail = result.tests.find((t) => t.role === "anchor")!;
-    const addOnDetails = result.tests.filter((t) => t.role === "add_on");
-
     return NextResponse.json({
       total_price: result.totalPrice,
       currency: "CAD",
-      breakdown: {
-        anchor_test: {
-          test_id: anchorDetail.testId,
-          test_name: anchorDetail.testName,
-          list_price: anchorDetail.listPrice,
-          reagent_cost: anchorDetail.reagentCost,
-          role: "anchor",
-        },
-        add_on_tests: addOnDetails.map((d) => ({
-          test_id: d.testId,
-          test_name: d.testName,
-          list_price: d.listPrice,
-          applied_price: Math.round(d.finalPrice * 100) / 100,
-          reagent_cost: d.reagentCost,
-          role: "add_on",
-          pricing_method: d.pricingMethod,
-        })),
-        subtotal: result.subtotal,
-        donation: result.donation,
-        revenue_share: result.revenueShare,
-        fixed_charges: result.donation + result.revenueShare,
-      },
+      breakdown: buildBreakdown(result),
       panel_composition: parsed.data.test_ids,
       calculated_at: new Date().toISOString(),
     });
