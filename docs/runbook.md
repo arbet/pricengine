@@ -37,22 +37,48 @@ fly apps create pricengine
 # 2. Provision a Postgres cluster and attach it (this sets DATABASE_URL).
 fly postgres create --name pricengine-db --region lhr
 fly postgres attach pricengine-db --app pricengine
+```
 
-# 3. Set the session secret. Generate a strong value:
+**3. Bootstrap the restricted application role.** The app connects to
+Postgres as a non-owner role (`pricengine_app`) so Row-Level Security is
+enforced — see [`../SECURITY.md`](../SECURITY.md) → "Tenant isolation".
+Create that role once, by running `prisma/bootstrap/rls-role.sql`:
+
+```bash
+# Open a proxy to the Postgres cluster.
+fly proxy 5432 -a pricengine-db
+
+# In another shell — connect as the cluster superuser and run the script.
+# `owner_role` is the user in DATABASE_URL (fly postgres attach created it).
+# Choose a strong `app_password`; you need it again in step 4.
+psql "postgres://postgres:<superuser-pw>@localhost:5432/pricengine" \
+  -v app_password="<strong-password>" \
+  -v owner_role="<owner-from-DATABASE_URL>" \
+  -f prisma/bootstrap/rls-role.sql
+```
+
+```bash
+# 4. Set secrets. NEXTAUTH_SECRET and AUTH_SECRET must be the SAME value.
+#    APP_DATABASE_URL is DATABASE_URL with the user/password swapped to
+#    pricengine_app / the app_password chosen in step 3.
 fly secrets set \
   NEXTAUTH_SECRET="$(openssl rand -base64 48)" \
   AUTH_SECRET="$(openssl rand -base64 48)" \
   NEXTAUTH_URL="https://pricengine.fly.dev" \
+  APP_DATABASE_URL="postgres://pricengine_app:<app_password>@<host>:5432/<db>" \
   --app pricengine
-# NEXTAUTH_SECRET and AUTH_SECRET must be the SAME value.
 
-# 4. Deploy.
+# 5. Deploy.
 fly deploy --app pricengine
 ```
 
 The deploy runs `npx prisma migrate deploy` as the release command, so
 the schema is created automatically. The database starts **empty** —
 to create the first super-admin, see "Seeding production" below.
+
+> If `APP_DATABASE_URL` is not set, the app falls back to the owner
+> connection and Row-Level Security is **not** enforced. Always set it
+> in production.
 
 ---
 
@@ -205,6 +231,22 @@ fly postgres users list --app pricengine-db
 fly postgres detach pricengine-db --app pricengine
 fly postgres attach  pricengine-db --app pricengine
 fly deploy --app pricengine        # pick up the new DATABASE_URL
+```
+
+### Application role password (`pricengine_app`)
+
+This is the role the app connects as for RLS-enforced queries.
+
+```bash
+fly proxy 5432 -a pricengine-db
+# In another shell, as the cluster superuser:
+psql "postgres://postgres:<superuser-pw>@localhost:5432/pricengine" \
+  -c "ALTER ROLE pricengine_app WITH PASSWORD '<new-password>';"
+
+# Update the secret (same URL as before, new password) and roll the app:
+fly secrets set \
+  APP_DATABASE_URL="postgres://pricengine_app:<new-password>@<host>:5432/<db>" \
+  --app pricengine
 ```
 
 ---

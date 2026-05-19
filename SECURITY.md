@@ -33,34 +33,44 @@ Main attack surfaces and how they are handled:
 - **Malicious uploads** — Excel imports are size- and row-capped and
   every row is validated with Zod before it touches the database.
 
-## Tenant isolation (important — read this)
+## Tenant isolation
 
-Tenant isolation is currently enforced **in application code**: every
-query and server action in `src/lib/db/` constrains results to the
-`orgId` resolved from the authenticated session. This is the control
-that is actually load-bearing today.
+Tenant isolation is enforced at **two** layers:
 
-The database also has Row-Level Security policies (migration
-`20260306120001_rls_policies`) on the tenant tables, written against a
-`current_setting('app.current_org_id')` session variable. **Those
-policies are currently inert**: the application never issues
-`SET app.current_org_id`, and it connects to Postgres as the database
-owner, for whom RLS is bypassed by default.
+1. **Application code** — every query and server action in `src/lib/db/`
+   constrains results to the `orgId` resolved from the authenticated
+   session.
+2. **PostgreSQL Row-Level Security** — the policies in migration
+   `20260306120001_rls_policies` are actively enforced. They are the
+   backstop: if an application query ever forgets its `orgId` filter,
+   the database still refuses to return or write another tenant's rows.
 
-This is a deliberate, documented state, not an accident. The
-consequence: RLS is *defence in depth that is not yet wired up*. If a
-future code path forgets the `orgId` filter, the database will not catch
-it. Two ways to make RLS actually enforce:
+How RLS is wired (see `src/lib/db/client.ts`):
 
-1. Set `app.current_org_id` (via `SET LOCAL` inside a transaction) on
-   every request, and connect as a non-owner role, **or**
-2. Treat the `orgId` filter in `src/lib/db/` as the sole control and
-   remove the RLS migration to avoid implying a guarantee that does not
-   exist.
+- The app connects to Postgres as a dedicated **non-owner role**
+  (`pricengine_app`). RLS is bypassed for superusers and table owners,
+  so a restricted role is required for the policies to apply at all.
+- Every tenant data access goes through `withTenant(ctx, fn)`, which
+  opens a transaction and sets the `app.current_org_id` /
+  `app.current_role` session variables (via `set_config(..., true)`,
+  i.e. transaction-local) that the policies match against. Inside `fn`,
+  `tdb()` returns the transaction client; it throws if called outside
+  `withTenant`, so a missing tenant scope fails loudly.
+- Migrations and seeding still use the schema-owner connection
+  (`DATABASE_URL`), which bypasses RLS — that is intentional.
+- A handful of auth-internal lookups (login, the session archive check,
+  API-key validation, `/api/health`) also use the owner connection
+  because they must run *before* a tenant context exists. They are
+  authentication machinery, not tenant data access.
 
-Recommend doing (1) before onboarding the second real tenant. Until
-then, code review of `src/lib/db/` must verify the `orgId` filter on
-every new query.
+The `pricengine_app` role is created by a one-time bootstrap
+(`prisma/bootstrap/rls-role.sql` in production, `dev-init.sql` for
+docker dev/test) — see [`runbook.md`](docs/runbook.md). Its credentials
+go in the `APP_DATABASE_URL` secret.
+
+Enforcement is covered by `tests/integration/rls.test.ts`, which proves
+isolation holds even for a query with no application-level `orgId`
+filter.
 
 ## Security headers
 
@@ -103,6 +113,9 @@ The app needs these set as Fly secrets in production (see
   The `.env` / `.env.example` placeholders (`dev-secret-change-in-production`)
   must **never** reach production.
 - `NEXTAUTH_URL` — the production URL (e.g. `https://pricengine.fly.dev`).
+- `APP_DATABASE_URL` — the restricted-role connection string the app uses
+  at runtime so Row-Level Security is enforced. See "Tenant isolation"
+  above and [`runbook.md`](docs/runbook.md).
 
 `prisma/seed.ts` refuses to run when `NODE_ENV=production` unless
 `ALLOW_PRODUCTION_SEED=true` is explicitly set — this prevents
@@ -116,8 +129,5 @@ accidentally wiping or re-seeding a live database.
 - **No CI pipeline.** Deploys are deliberate manual `fly deploy` runs.
   Tests and lint are run locally before deploying. Documented as an
   accepted choice for handover — the client can add CI later.
-- **RLS not wired** — see "Tenant isolation" above. Accepted for v1
-  with a single tenant in testing; flagged for the client to close
-  before multi-tenant production use.
 - **Rate limiter is in-memory** — accepted at current scale; see "Rate
   limiting".

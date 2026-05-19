@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/client";
+import { tdb } from "@/lib/db/client";
 import { Prisma } from "@prisma/client";
 
 export async function findAllTests(
@@ -28,29 +28,29 @@ export async function findAllTests(
   const paginate = pageSize > 0;
 
   const [tests, total] = await Promise.all([
-    prisma.labTest.findMany({
+    tdb().labTest.findMany({
       where,
       orderBy: { testId: "asc" },
       ...(paginate ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
     }),
-    prisma.labTest.count({ where }),
+    tdb().labTest.count({ where }),
   ]);
 
   return { tests, total, page, pageSize };
 }
 
 export async function findTestById(id: string) {
-  return prisma.labTest.findUnique({ where: { id } });
+  return tdb().labTest.findUnique({ where: { id } });
 }
 
 export async function findTestByTestId(testId: string, orgId: string) {
-  return prisma.labTest.findUnique({
+  return tdb().labTest.findUnique({
     where: { testId_orgId: { testId, orgId } },
   });
 }
 
 export async function findTestsByIds(ids: string[]) {
-  return prisma.labTest.findMany({
+  return tdb().labTest.findMany({
     where: { id: { in: ids } },
   });
 }

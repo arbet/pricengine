@@ -1,4 +1,4 @@
-import { prisma } from "@/lib/db/client";
+import { tdb } from "@/lib/db/client";
 import { Prisma } from "@prisma/client";
 
 export async function findAllLogs(
@@ -27,14 +27,14 @@ export async function findAllLogs(
   };
 
   const [logs, total] = await Promise.all([
-    prisma.pricingLog.findMany({
+    tdb().pricingLog.findMany({
       where,
       include: { user: { select: { id: true, name: true } } },
       orderBy: { timestamp: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
     }),
-    prisma.pricingLog.count({ where }),
+    tdb().pricingLog.count({ where }),
   ]);
 
   return { logs, total, page, pageSize };
@@ -50,7 +50,7 @@ export async function searchLogsByTestIds(orgId: string, searchTestIds: string[]
   if (searchTestIds.length === 0) return [];
 
   // Use raw SQL for array containment and relevance sorting
-  const logs = await prisma.$queryRaw<
+  const logs = await tdb().$queryRaw<
     Array<{
       id: string;
       timestamp: Date;

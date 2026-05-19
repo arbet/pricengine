@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@/lib/db/client";
+import { prisma, withTenant, tdb } from "@/lib/db/client";
 import { validateApiKey } from "@/lib/auth/api-key";
 import { apiPricingRequestSchema } from "@/lib/validations/schemas";
 import { calculatePanelPrice, PricingConfig, PricingTestInput } from "@/lib/pricing";
@@ -81,13 +81,15 @@ export async function POST(request: NextRequest) {
       targetOrg = found;
     }
 
-    // Fetch tests by lab-assigned test IDs
-    const tests = await prisma.labTest.findMany({
-      where: {
-        testId: { in: parsed.data.test_ids },
-        orgId: targetOrg.id,
-      },
-    });
+    // Fetch tests by lab-assigned test IDs (Row-Level Security scopes to the org)
+    const tests = await withTenant({ orgId: targetOrg.id, role: "api" }, () =>
+      tdb().labTest.findMany({
+        where: {
+          testId: { in: parsed.data.test_ids },
+          orgId: targetOrg.id,
+        },
+      })
+    );
 
     // Check for missing tests
     const foundTestIds = new Set(tests.map((t) => t.testId));
@@ -124,15 +126,17 @@ export async function POST(request: NextRequest) {
     const result = calculatePanelPrice(testInputs, config);
 
     // Log the pricing request
-    await prisma.pricingLog.create({
-      data: {
-        panelTestIds: tests.map((t) => t.testId),
-        panelTestNames: tests.map((t) => t.name),
-        finalPrice: result.totalPrice,
-        source: "api",
-        orgId: targetOrg.id,
-      },
-    });
+    await withTenant({ orgId: targetOrg.id, role: "api" }, () =>
+      tdb().pricingLog.create({
+        data: {
+          panelTestIds: tests.map((t) => t.testId),
+          panelTestNames: tests.map((t) => t.name),
+          finalPrice: result.totalPrice,
+          source: "api",
+          orgId: targetOrg.id,
+        },
+      })
+    );
 
     // Build response per contract
     const anchorDetail = result.tests.find((t) => t.role === "anchor")!;

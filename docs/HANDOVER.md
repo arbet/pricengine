@@ -65,9 +65,9 @@ If you bring in a developer to maintain or extend the system, give them:
    deploy" — this includes provisioning the Fly Postgres database.
 3. Decide whether to put the app on a custom domain or keep
    `pricengine.fly.dev`.
-4. Close the security follow-ups in [`../SECURITY.md`](../SECURITY.md) —
-   most importantly, wire up database Row-Level Security before a second
-   real tenant is onboarded.
+4. Review the security decisions in [`../SECURITY.md`](../SECURITY.md)
+   and decide on the remaining accepted trade-offs (e.g. the in-memory
+   rate limiter).
 5. Set up a recurring (e.g. quarterly) review of:
    - The Fly.io bill.
    - Dependency security updates (`npm audit`).

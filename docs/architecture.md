@@ -52,8 +52,10 @@ same app.
 - PostgreSQL 17, provisioned as a Fly Postgres cluster and attached to
   the app (which sets `DATABASE_URL`).
 - Accessed through Prisma 7 with the `pg` driver adapter
-  (`src/lib/db/client.ts`) — a single pooled client reused across
-  requests via a global singleton.
+  (`src/lib/db/client.ts`). Two pooled clients: an owner connection
+  (`DATABASE_URL`, RLS-bypassing — migrations, seed, auth lookups) and a
+  restricted-role connection (`APP_DATABASE_URL`, RLS-enforced — all
+  tenant data, via `withTenant`).
 - Migrations run as the Fly **release command**
   (`npx prisma migrate deploy`) before each new version takes traffic.
 
@@ -75,17 +77,22 @@ soft delete that blocks login (see auth, below).
 
 ## Multi-tenancy
 
-Tenant isolation is enforced **in application code**: every query and
-server action in `src/lib/db/` filters by the `orgId` resolved from the
-server-side session.
+Tenant isolation is enforced at two layers:
 
-PostgreSQL Row-Level Security policies also exist (migration
-`20260306120001_rls_policies`) but are **currently inert** — the app
-does not set the `app.current_org_id` session variable they depend on,
-and connects as the DB owner (RLS-exempt). See
-[`../SECURITY.md`](../SECURITY.md) → "Tenant isolation" for the full
-explanation and the recommended fix. Treat the in-code `orgId` filter as
-the real control until RLS is wired up.
+- **Application code** — every query and server action in `src/lib/db/`
+  filters by the `orgId` resolved from the server-side session.
+- **PostgreSQL Row-Level Security** — the policies in migration
+  `20260306120001_rls_policies` are actively enforced as a backstop.
+
+The app connects at runtime as a restricted non-owner role
+(`pricengine_app`, via `APP_DATABASE_URL`) so the RLS policies apply.
+All tenant data access goes through `withTenant(ctx, fn)` in
+`src/lib/db/client.ts`, which opens a transaction and sets the
+`app.current_org_id` / `app.current_role` session variables the policies
+read; `tdb()` returns that transaction client. Migrations, seeding, and
+auth-internal lookups use the owner connection (`DATABASE_URL`), which
+bypasses RLS by design. Full explanation:
+[`../SECURITY.md`](../SECURITY.md) → "Tenant isolation".
 
 ## Authentication & authorization
 
@@ -130,7 +137,8 @@ a `*-client.tsx` client component.
 - `rate-limit.ts` — in-memory fixed-window limiter for the public API.
 - `auth/` — NextAuth config, API-key hashing.
 - `validations/schemas.ts` — Zod schemas for every mutation and the API.
-- `db/client.ts` — the singleton Prisma client.
+- `db/client.ts` — the owner + restricted Prisma clients, the
+  `withTenant()` tenant-scope wrapper, and the `tdb()` accessor.
 - `db/actions/` — server actions (`"use server"`): mutations with auth
   + Zod validation. Files: `admin-actions`, `test-actions` (includes
   the ExcelJS upload), `panel-actions`, `calculator-actions`,

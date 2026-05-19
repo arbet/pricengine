@@ -1,12 +1,16 @@
 "use server";
 
-import { prisma } from "@/lib/db/client";
+import { withTenant, tdb } from "@/lib/db/client";
 import { auth } from "@/lib/auth/config";
 import { createOrgSchema, updateOrgSchema, createUserSchema, updateUserSchema } from "@/lib/validations/schemas";
 import { hashSync } from "bcryptjs";
 import { revalidatePath } from "next/cache";
 import { generateApiKey, hashApiKey } from "@/lib/auth/api-key";
 import { formatError } from "./utils";
+
+// Admin actions operate across all organizations; the RLS policies grant this
+// when app.current_role is 'super_admin'.
+const ADMIN_CTX = { orgId: null, role: "super_admin" } as const;
 
 function stripApiKey<T extends { apiKey: string | null }>(org: T) {
   const { apiKey, ...rest } = org;
@@ -33,16 +37,18 @@ export async function createOrganization(data: {
     const parsed = createOrgSchema.parse(data);
 
     const plainApiKey = generateApiKey(parsed.code);
-    const org = await prisma.organization.create({
-      data: {
-        name: parsed.name,
-        code: parsed.code.toUpperCase(),
-        contactEmail: parsed.contactEmail || null,
-        phone: parsed.phone || null,
-        address: parsed.address || null,
-        apiKey: hashApiKey(plainApiKey),
-      },
-    });
+    const org = await withTenant(ADMIN_CTX, () =>
+      tdb().organization.create({
+        data: {
+          name: parsed.name,
+          code: parsed.code.toUpperCase(),
+          contactEmail: parsed.contactEmail || null,
+          phone: parsed.phone || null,
+          address: parsed.address || null,
+          apiKey: hashApiKey(plainApiKey),
+        },
+      })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, org: stripApiKey(org), apiKey: plainApiKey };
@@ -63,16 +69,18 @@ export async function updateOrganization(data: {
     await getAdminSession();
     const parsed = updateOrgSchema.parse(data);
 
-    const org = await prisma.organization.update({
-      where: { id: parsed.id },
-      data: {
-        name: parsed.name,
-        code: parsed.code.toUpperCase(),
-        contactEmail: parsed.contactEmail || null,
-        phone: parsed.phone || null,
-        address: parsed.address || null,
-      },
-    });
+    const org = await withTenant(ADMIN_CTX, () =>
+      tdb().organization.update({
+        where: { id: parsed.id },
+        data: {
+          name: parsed.name,
+          code: parsed.code.toUpperCase(),
+          contactEmail: parsed.contactEmail || null,
+          phone: parsed.phone || null,
+          address: parsed.address || null,
+        },
+      })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, org: stripApiKey(org) };
@@ -85,10 +93,10 @@ export async function archiveOrganization(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.$transaction([
-      prisma.organization.update({ where: { id }, data: { archivedAt: new Date() } }),
-      prisma.user.updateMany({ where: { orgId: id, archivedAt: null }, data: { archivedAt: new Date() } }),
-    ]);
+    await withTenant(ADMIN_CTX, async () => {
+      await tdb().organization.update({ where: { id }, data: { archivedAt: new Date() } });
+      await tdb().user.updateMany({ where: { orgId: id, archivedAt: null }, data: { archivedAt: new Date() } });
+    });
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };
@@ -101,10 +109,10 @@ export async function restoreOrganization(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.$transaction([
-      prisma.organization.update({ where: { id }, data: { archivedAt: null } }),
-      prisma.user.updateMany({ where: { orgId: id }, data: { archivedAt: null } }),
-    ]);
+    await withTenant(ADMIN_CTX, async () => {
+      await tdb().organization.update({ where: { id }, data: { archivedAt: null } });
+      await tdb().user.updateMany({ where: { orgId: id }, data: { archivedAt: null } });
+    });
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };
@@ -124,15 +132,17 @@ export async function createUser(data: {
     await getAdminSession();
     const parsed = createUserSchema.parse(data);
 
-    const user = await prisma.user.create({
-      data: {
-        name: parsed.name,
-        email: parsed.email,
-        passwordHash: hashSync(parsed.password, 10),
-        role: parsed.role,
-        orgId: parsed.orgId,
-      },
-    });
+    const user = await withTenant(ADMIN_CTX, () =>
+      tdb().user.create({
+        data: {
+          name: parsed.name,
+          email: parsed.email,
+          passwordHash: hashSync(parsed.password, 10),
+          role: parsed.role,
+          orgId: parsed.orgId,
+        },
+      })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
@@ -158,10 +168,12 @@ export async function updateUser(data: {
     if (parsed.role) updateData.role = parsed.role;
     if (parsed.password) updateData.passwordHash = hashSync(parsed.password, 10);
 
-    const user = await prisma.user.update({
-      where: { id: parsed.id },
-      data: updateData,
-    });
+    const user = await withTenant(ADMIN_CTX, () =>
+      tdb().user.update({
+        where: { id: parsed.id },
+        data: updateData,
+      })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, user: { id: user.id, name: user.name, email: user.email, role: user.role, orgId: user.orgId } };
@@ -174,10 +186,12 @@ export async function regenerateApiKey(orgId: string) {
   try {
     await getAdminSession();
 
-    const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { code: true } });
-    const newKey = generateApiKey(org.code);
-
-    await prisma.organization.update({ where: { id: orgId }, data: { apiKey: hashApiKey(newKey) } });
+    const newKey = await withTenant(ADMIN_CTX, async () => {
+      const org = await tdb().organization.findUniqueOrThrow({ where: { id: orgId }, select: { code: true } });
+      const key = generateApiKey(org.code);
+      await tdb().organization.update({ where: { id: orgId }, data: { apiKey: hashApiKey(key) } });
+      return key;
+    });
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, apiKey: newKey };
@@ -190,7 +204,9 @@ export async function archiveUser(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.user.update({ where: { id }, data: { archivedAt: new Date() } });
+    await withTenant(ADMIN_CTX, () =>
+      tdb().user.update({ where: { id }, data: { archivedAt: new Date() } })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };
@@ -203,7 +219,9 @@ export async function restoreUser(id: string) {
   try {
     await getAdminSession();
 
-    await prisma.user.update({ where: { id }, data: { archivedAt: null } });
+    await withTenant(ADMIN_CTX, () =>
+      tdb().user.update({ where: { id }, data: { archivedAt: null } })
+    );
 
     revalidatePath("/dashboard/admin");
     return { success: true as const };

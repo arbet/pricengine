@@ -1,19 +1,19 @@
-import { prisma } from "@/lib/db/client";
+import { tdb } from "@/lib/db/client";
 
 export async function findOrgById(id: string) {
-  return prisma.organization.findUnique({ where: { id } });
+  return tdb().organization.findUnique({ where: { id } });
 }
 
 export async function findOrgByCode(code: string) {
-  return prisma.organization.findUnique({ where: { code } });
+  return tdb().organization.findUnique({ where: { code } });
 }
 
 export async function findOrgByName(name: string) {
-  return prisma.organization.findUnique({ where: { name } });
+  return tdb().organization.findUnique({ where: { name } });
 }
 
 export async function findAllOrgs({ includeArchived = false } = {}) {
-  const orgs = await prisma.organization.findMany({
+  const orgs = await tdb().organization.findMany({
     where: includeArchived ? {} : { archivedAt: null },
     orderBy: { name: "asc" },
     include: {

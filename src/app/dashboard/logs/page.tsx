@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth/config";
+import { withTenant } from "@/lib/db/client";
 import { findAllLogs } from "@/lib/db/queries/logs";
 import LogsClient from "./logs-client";
 
@@ -7,8 +8,12 @@ export default async function LogsPage() {
   const session = await auth();
   const user = session?.user as { role: string; orgId: string | null };
   if (!user?.orgId || user.role !== "lab_manager") redirect("/dashboard");
+  const orgId = user.orgId;
 
-  const { logs } = await findAllLogs(user.orgId);
+  const { logs } = await withTenant(
+    { orgId, role: user.role },
+    () => findAllLogs(orgId)
+  );
 
   const serialized = JSON.parse(JSON.stringify(logs)).map((log: Record<string, unknown>) => ({
     ...log,

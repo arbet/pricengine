@@ -257,6 +257,5 @@ For the client to confirm in writing once all steps are done:
 - [ ] Previous owner's access removed from GitHub and Fly.io.
 - [ ] [`HANDOVER.md`](HANDOVER.md) and [`vendors.md`](vendors.md)
       updated where they say `<TBD>`.
-- [ ] Security follow-ups in [`../SECURITY.md`](../SECURITY.md)
-      reviewed — in particular the plan to wire up database Row-Level
-      Security before onboarding a second tenant.
+- [ ] Security decisions in [`../SECURITY.md`](../SECURITY.md) reviewed,
+      including the accepted trade-offs.

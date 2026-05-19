@@ -1,7 +1,7 @@
-import { prisma } from "@/lib/db/client";
+import { tdb } from "@/lib/db/client";
 
 export async function findAllPanels(orgId: string) {
-  return prisma.panel.findMany({
+  return tdb().panel.findMany({
     where: { orgId },
     include: {
       panelTests: {
@@ -13,7 +13,7 @@ export async function findAllPanels(orgId: string) {
 }
 
 export async function findPanelById(id: string) {
-  return prisma.panel.findUnique({
+  return tdb().panel.findUnique({
     where: { id },
     include: {
       panelTests: {

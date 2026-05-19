@@ -1,6 +1,6 @@
 "use server";
 
-import { prisma } from "@/lib/db/client";
+import { withTenant, tdb } from "@/lib/db/client";
 import { auth } from "@/lib/auth/config";
 import { createTestSchema, updateTestSchema, excelTestRowSchema } from "@/lib/validations/schemas";
 import { revalidatePath } from "next/cache";
@@ -13,7 +13,7 @@ async function getSession() {
   const user = session.user as { id: string; role: string; orgId: string | null };
   if (user.role !== "lab_manager") throw new Error("Forbidden");
   if (!user.orgId) throw new Error("No organization");
-  return user;
+  return { id: user.id, role: user.role, orgId: user.orgId };
 }
 
 export async function createTest(data: {
@@ -27,16 +27,18 @@ export async function createTest(data: {
     const user = await getSession();
     const parsed = createTestSchema.parse(data);
 
-    const test = await prisma.labTest.create({
-      data: {
-        testId: parsed.testId,
-        name: parsed.name,
-        reagentCost: parsed.reagentCost,
-        listPrice: parsed.listPrice,
-        category: parsed.category || null,
-        orgId: user.orgId!,
-      },
-    });
+    const test = await withTenant({ orgId: user.orgId, role: user.role }, () =>
+      tdb().labTest.create({
+        data: {
+          testId: parsed.testId,
+          name: parsed.name,
+          reagentCost: parsed.reagentCost,
+          listPrice: parsed.listPrice,
+          category: parsed.category || null,
+          orgId: user.orgId,
+        },
+      })
+    );
 
     revalidatePath("/dashboard/tests");
     return { success: true as const, test: { ...test, reagentCost: Number(test.reagentCost), listPrice: Number(test.listPrice) } };
@@ -57,18 +59,20 @@ export async function updateTest(data: {
     const user = await getSession();
     const parsed = updateTestSchema.parse(data);
 
-    const existing = await prisma.labTest.findUnique({ where: { id: parsed.id } });
-    if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
+    const test = await withTenant({ orgId: user.orgId, role: user.role }, async () => {
+      const existing = await tdb().labTest.findUnique({ where: { id: parsed.id } });
+      if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
 
-    const test = await prisma.labTest.update({
-      where: { id: parsed.id },
-      data: {
-        testId: parsed.testId,
-        name: parsed.name,
-        reagentCost: parsed.reagentCost,
-        listPrice: parsed.listPrice,
-        category: parsed.category || null,
-      },
+      return tdb().labTest.update({
+        where: { id: parsed.id },
+        data: {
+          testId: parsed.testId,
+          name: parsed.name,
+          reagentCost: parsed.reagentCost,
+          listPrice: parsed.listPrice,
+          category: parsed.category || null,
+        },
+      });
     });
 
     revalidatePath("/dashboard/tests");
@@ -82,10 +86,11 @@ export async function deleteTest(id: string) {
   try {
     const user = await getSession();
 
-    const existing = await prisma.labTest.findUnique({ where: { id } });
-    if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
-
-    await prisma.labTest.delete({ where: { id } });
+    await withTenant({ orgId: user.orgId, role: user.role }, async () => {
+      const existing = await tdb().labTest.findUnique({ where: { id } });
+      if (!existing || existing.orgId !== user.orgId) throw new Error("Not found");
+      await tdb().labTest.delete({ where: { id } });
+    });
 
     revalidatePath("/dashboard/tests");
     return { success: true as const };
@@ -170,26 +175,32 @@ export async function uploadTestCatalog(formData: FormData) {
       return { success: false as const, errors: [{ row: 0, message: "No valid test rows found" }] };
     }
 
-    // Bulk upsert
-    for (const row of rows) {
-      await prisma.labTest.upsert({
-        where: { testId_orgId: { testId: row.testId, orgId: user.orgId! } },
-        update: {
-          name: row.name,
-          reagentCost: row.reagentCost,
-          listPrice: row.listPrice,
-          category: row.category || null,
-        },
-        create: {
-          testId: row.testId,
-          name: row.name,
-          reagentCost: row.reagentCost,
-          listPrice: row.listPrice,
-          category: row.category || null,
-          orgId: user.orgId!,
-        },
-      });
-    }
+    // Bulk upsert — one transaction so a large import is all-or-nothing.
+    await withTenant(
+      { orgId: user.orgId, role: user.role },
+      async () => {
+        for (const row of rows) {
+          await tdb().labTest.upsert({
+            where: { testId_orgId: { testId: row.testId, orgId: user.orgId } },
+            update: {
+              name: row.name,
+              reagentCost: row.reagentCost,
+              listPrice: row.listPrice,
+              category: row.category || null,
+            },
+            create: {
+              testId: row.testId,
+              name: row.name,
+              reagentCost: row.reagentCost,
+              listPrice: row.listPrice,
+              category: row.category || null,
+              orgId: user.orgId,
+            },
+          });
+        }
+      },
+      { timeout: 120_000 }
+    );
 
     revalidatePath("/dashboard/tests");
     return { success: true as const, importedCount: rows.length };

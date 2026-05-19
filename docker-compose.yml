@@ -10,6 +10,7 @@ services:
       POSTGRES_DB: pricengine_dev
     volumes:
       - pricengine_pgdata:/var/lib/postgresql/data
+      - ./prisma/bootstrap/dev-init.sql:/docker-entrypoint-initdb.d/01-rls-role.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
@@ -30,6 +31,7 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: "postgresql://postgres:postgres@db:5432/pricengine_dev"
+      APP_DATABASE_URL: "postgresql://pricengine_app:pricengine_app_pw@db:5432/pricengine_dev"
       NEXTAUTH_SECRET: "dev-secret-change-in-production"
       NEXTAUTH_URL: "http://localhost:3000"
     depends_on:
