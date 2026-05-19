@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect } from "react";
 import Header from "@/components/header";
 import { analyzePanel } from "@/lib/db/actions/analytics-actions";
 import type { PricingResult, AnalyticsResult } from "@/lib/pricing";
