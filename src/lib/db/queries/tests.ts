@@ -1,4 +1,4 @@
-import { prisma, withOrgScope } from "@/lib/db/client";
+import { prisma } from "@/lib/db/client";
 import { Prisma } from "@prisma/client";
 
 export async function findAllTests(

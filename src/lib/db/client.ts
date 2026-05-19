@@ -18,34 +18,3 @@ export const prisma = new Proxy({} as PrismaClient, {
     return (getPrismaClient() as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
-
-/**
- * Execute a callback within an RLS-scoped transaction.
- * Sets PostgreSQL session variables so RLS policies filter by org.
- */
-export async function withOrgScope<T>(
-  orgId: string,
-  role: string,
-  fn: (tx: PrismaClient) => Promise<T>
-): Promise<T> {
-  const client = getPrismaClient();
-  return client.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
-    await tx.$executeRaw`SELECT set_config('app.current_role', ${role}, true)`;
-    return fn(tx as unknown as PrismaClient);
-  }) as T;
-}
-
-/**
- * Execute a callback with super_admin scope (sees all orgs).
- */
-export async function withAdminScope<T>(
-  fn: (tx: PrismaClient) => Promise<T>
-): Promise<T> {
-  const client = getPrismaClient();
-  return client.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT set_config('app.current_role', 'super_admin', true)`;
-    await tx.$executeRaw`SELECT set_config('app.current_org_id', '', true)`;
-    return fn(tx as unknown as PrismaClient);
-  }) as T;
-}
