@@ -1,5 +1,10 @@
 import type { NextConfig } from "next";
 
+// Next.js dev mode (webpack HMR / fast refresh) relies on eval(); production
+// builds do not. 'unsafe-eval' is therefore added only outside production.
+const isDev = process.env.NODE_ENV !== "production";
+const scriptSrc = `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`;
+
 const securityHeaders = [
   {
     key: "Strict-Transport-Security",
@@ -16,7 +21,7 @@ const securityHeaders = [
     key: "Content-Security-Policy",
     value: [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline'",
+      scriptSrc,
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data:",
       "font-src 'self'",

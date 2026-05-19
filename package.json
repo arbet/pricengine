@@ -7,7 +7,14 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "vitest run"
+    "test": "vitest run --project unit",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "dotenv -e .env.test -- vitest run --project integration",
+    "test:e2e": "dotenv -e .env.test -- playwright test",
+    "test:db:up": "docker compose -f docker-compose.test.yml up -d --wait",
+    "test:db:down": "docker compose -f docker-compose.test.yml down",
+    "test:db:reset": "dotenv -e .env.test -- prisma migrate deploy && dotenv -e .env.test -- tsx prisma/seed.ts",
+    "test:setup": "npm run test:db:up && npm run test:db:reset"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"
@@ -34,6 +41,7 @@
     "@types/pg": "^8.18.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "dotenv-cli": "^11.0.0",
     "tailwindcss": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.7.0",
