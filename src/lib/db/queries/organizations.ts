@@ -13,11 +13,17 @@ export async function findOrgByName(name: string) {
 }
 
 export async function findAllOrgs({ includeArchived = false } = {}) {
-  return prisma.organization.findMany({
+  const orgs = await prisma.organization.findMany({
     where: includeArchived ? {} : { archivedAt: null },
     orderBy: { name: "asc" },
     include: {
       _count: { select: { users: { where: { archivedAt: null } }, labTests: true } },
     },
   });
+
+  // Never expose the stored API key hash to the client.
+  return orgs.map(({ apiKey, ...org }) => ({
+    ...org,
+    hasApiKey: apiKey !== null,
+  }));
 }

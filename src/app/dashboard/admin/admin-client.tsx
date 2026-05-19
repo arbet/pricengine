@@ -23,7 +23,7 @@ interface OrgRow {
   contactEmail: string | null;
   phone: string | null;
   address: string | null;
-  apiKey: string | null;
+  hasApiKey: boolean;
   createdAt: string;
   archivedAt: string | null;
   _count: { users: number; labTests: number };
@@ -98,8 +98,10 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
 
   const [actionError, setActionError] = useState("");
 
-  // API Key management
-  const [revealedKeys, setRevealedKeys] = useState<Set<string>>(new Set());
+  // API Key management.
+  // Stored keys are hashed server-side; the plaintext is only available here
+  // transiently right after it is generated (create / regenerate).
+  const [newKeys, setNewKeys] = useState<Record<string, string>>({});
   const [copiedOrgId, setCopiedOrgId] = useState<string | null>(null);
   const [regenConfirmId, setRegenConfirmId] = useState<string | null>(null);
 
@@ -123,6 +125,10 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
     const result = await createOrganization({ name: formName, code: formCode, contactEmail: formEmail, phone: formPhone, address: formAddress });
     if (result.success && "org" in result) {
       setOrgs([...orgs, { ...result.org, createdAt: result.org.createdAt as unknown as string, archivedAt: null, _count: { users: 0, labTests: 0 } } as unknown as OrgRow]);
+      if ("apiKey" in result) {
+        setNewKeys((prev) => ({ ...prev, [result.org.id]: result.apiKey }));
+        setExpandedOrg(result.org.id);
+      }
       setShowAddOrg(false);
       setFormName(""); setFormCode(""); setFormEmail(""); setFormPhone(""); setFormAddress(""); setOrgAttempted(false);
     } else if (!result.success && "error" in result) {
@@ -187,40 +193,28 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   };
 
   // --- API Key helpers ---
-  const toggleKeyReveal = (orgId: string) => {
-    setRevealedKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(orgId)) next.delete(orgId); else next.add(orgId);
-      return next;
-    });
-  };
-
-  const copyApiKey = async (org: OrgRow) => {
-    if (!org.apiKey) return;
-    await navigator.clipboard.writeText(org.apiKey);
-    setCopiedOrgId(org.id);
-    setTimeout(() => setCopiedOrgId((cur) => (cur === org.id ? null : cur)), 2000);
+  const copyApiKey = async (orgId: string) => {
+    const key = newKeys[orgId];
+    if (!key) return;
+    await navigator.clipboard.writeText(key);
+    setCopiedOrgId(orgId);
+    setTimeout(() => setCopiedOrgId((cur) => (cur === orgId ? null : cur)), 2000);
   };
 
   const handleRegenerateKey = async (orgId: string) => {
     const result = await regenerateApiKey(orgId);
     if (result.success && "apiKey" in result) {
-      setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, apiKey: result.apiKey } : o)));
-      setRevealedKeys((prev) => new Set(prev).add(orgId));
+      setOrgs(orgs.map((o) => (o.id === orgId ? { ...o, hasApiKey: true } : o)));
+      setNewKeys((prev) => ({ ...prev, [orgId]: result.apiKey }));
     }
     setRegenConfirmId(null);
-  };
-
-  const maskKey = (key: string) => {
-    const prefix = key.split("-")[0];
-    return `${prefix}-${"•".repeat(32)}`;
   };
 
   // --- Add User validation ---
   const userNameErr = userAttempted && !userFormName.trim() ? "Name is required" : "";
   const userEmailErr = userAttempted && !userFormEmail.trim() ? "Email is required" : userAttempted && !EMAIL_RE.test(userFormEmail) ? "Invalid email format" : "";
-  const userPwErr = userAttempted && !userFormPassword ? "Password is required" : userAttempted && userFormPassword.length < 6 ? "Password must be at least 6 characters" : "";
-  const userValid = userFormName.trim() && EMAIL_RE.test(userFormEmail) && userFormPassword.length >= 6;
+  const userPwErr = userAttempted && !userFormPassword ? "Password is required" : userAttempted && userFormPassword.length < 12 ? "Password must be at least 12 characters" : "";
+  const userValid = userFormName.trim() && EMAIL_RE.test(userFormEmail) && userFormPassword.length >= 12;
 
   const handleAddUser = async () => {
     setUserAttempted(true);
@@ -247,9 +241,9 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
   // --- Edit User validation ---
   const editNameErr = editAttempted && !editName.trim() ? "Name is required" : "";
   const editEmailErr = editAttempted && !editEmail.trim() ? "Email is required" : editAttempted && !EMAIL_RE.test(editEmail) ? "Invalid email format" : "";
-  const editPwLenErr = editAttempted && editPassword && editPassword.length < 6 ? "Password must be at least 6 characters" : "";
+  const editPwLenErr = editAttempted && editPassword && editPassword.length < 12 ? "Password must be at least 12 characters" : "";
   const editPwMatchErr = editAttempted && editPassword && editPassword !== editConfirmPassword ? "Passwords do not match" : "";
-  const editValid = editName.trim() && EMAIL_RE.test(editEmail) && (!editPassword || (editPassword.length >= 6 && editPassword === editConfirmPassword));
+  const editValid = editName.trim() && EMAIL_RE.test(editEmail) && (!editPassword || (editPassword.length >= 12 && editPassword === editConfirmPassword));
 
   const handleSaveUser = async () => {
     setEditAttempted(true);
@@ -400,31 +394,38 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                     {/* API Key */}
                     <div className="px-5 pb-4 border-t border-border pt-4">
                       <p className="text-[11px] font-body font-medium text-text-muted uppercase tracking-wider mb-1.5">API Key</p>
-                      {org.apiKey ? (
+                      {newKeys[org.id] ? (
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <code className="font-mono text-sm text-text-secondary select-all break-all">
+                              {newKeys[org.id]}
+                            </code>
+                            <div className="flex items-center gap-1 ml-auto shrink-0">
+                              {/* Copy */}
+                              <button onClick={() => copyApiKey(org.id)} title="Copy API key"
+                                className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-lg transition-colors">
+                                {copiedOrgId === org.id ? (
+                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
+                                ) : (
+                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                                )}
+                              </button>
+                              {/* Regenerate */}
+                              {!isArchived && (
+                                <button onClick={() => setRegenConfirmId(org.id)} title="Regenerate API key"
+                                  className="p-1.5 text-text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors">
+                                  <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-[11px] font-body text-amber-600 mt-1.5">Copy this key now — it is shown only once and cannot be retrieved later.</p>
+                        </div>
+                      ) : org.hasApiKey ? (
                         <div className="flex items-center gap-2">
-                          <code className="font-mono text-sm text-text-secondary select-all">
-                            {revealedKeys.has(org.id) ? org.apiKey : maskKey(org.apiKey)}
-                          </code>
+                          <code className="font-mono text-sm text-text-muted select-none">{"•".repeat(40)}</code>
                           <div className="flex items-center gap-1 ml-auto shrink-0">
-                            {/* Reveal toggle */}
-                            <button onClick={() => toggleKeyReveal(org.id)} title={revealedKeys.has(org.id) ? "Hide API key" : "Reveal API key"}
-                              className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-lg transition-colors">
-                              {revealedKeys.has(org.id) ? (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                              ) : (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                              )}
-                            </button>
-                            {/* Copy */}
-                            <button onClick={() => copyApiKey(org)} title="Copy API key"
-                              className="p-1.5 text-text-muted hover:text-text-primary hover:bg-surface rounded-lg transition-colors">
-                              {copiedOrgId === org.id ? (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" className="text-green-500"><polyline points="20 6 9 17 4 12"/></svg>
-                              ) : (
-                                <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                              )}
-                            </button>
-                            {/* Regenerate */}
+                            <span className="text-[11px] font-body text-text-muted">Hidden — regenerate to view</span>
                             {!isArchived && (
                               <button onClick={() => setRegenConfirmId(org.id)} title="Regenerate API key"
                                 className="p-1.5 text-text-muted hover:text-amber-500 hover:bg-amber-500/10 rounded-lg transition-colors">
@@ -480,7 +481,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
                               <label className="text-xs font-body text-text-muted">Password <span className="text-red-500">*</span></label>
                               <div className="relative mt-1">
                                 <input type={userFormShowPw ? "text" : "password"} value={userFormPassword} onChange={(e) => setUserFormPassword(e.target.value)}
-                                  placeholder="Min. 6 characters" autoComplete="new-password"
+                                  placeholder="Min. 12 characters" autoComplete="new-password"
                                   className={`w-full px-3 py-2 pr-9 rounded-lg border text-sm font-body focus:outline-none transition-colors bg-surface ${userPwErr ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
                                 <button type="button" onClick={() => setUserFormShowPw(!userFormShowPw)}
                                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
@@ -730,7 +731,7 @@ export default function AdminClient({ initialOrgs, initialUsers }: { initialOrgs
               <div className="space-y-3">
                 <div className="relative">
                   <input type={editShowPw ? "text" : "password"} value={editPassword} onChange={(e) => { setEditPassword(e.target.value); setEditPwError(""); }}
-                    placeholder="Min. 6 characters"
+                    placeholder="Min. 12 characters"
                     className={`w-full px-4 py-2.5 pr-10 rounded-lg border text-sm font-body focus:outline-none transition-colors ${editPwLenErr ? "border-red-500 focus:border-red-500" : "border-border focus:border-accent"}`} />
                   <button type="button" onClick={() => setEditShowPw(!editShowPw)} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-secondary">
                     <svg width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>

@@ -2,8 +2,15 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { hashSync } from "bcryptjs";
+import { createHash, randomBytes } from "crypto";
 
 const RLS_TABLES = ["organizations", "users", "lab_tests", "panels", "panel_tests", "pricing_logs"];
+
+const genApiKey = (code: string) =>
+  `${code.toLowerCase()}-${randomBytes(24).toString("hex")}`;
+const hashApiKey = (key: string) =>
+  createHash("sha256").update(key).digest("hex");
+const genPassword = () => randomBytes(12).toString("base64url");
 
 async function disableRLS(pool: Pool) {
   for (const table of RLS_TABLES) {
@@ -18,6 +25,16 @@ async function enableRLS(pool: Pool) {
 }
 
 async function main() {
+  if (
+    process.env.NODE_ENV === "production" &&
+    process.env.ALLOW_PRODUCTION_SEED !== "true"
+  ) {
+    console.error(
+      "Refusing to seed: NODE_ENV=production. Set ALLOW_PRODUCTION_SEED=true to override."
+    );
+    process.exit(1);
+  }
+
   const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
   // Temporarily disable RLS for seeding
@@ -25,6 +42,13 @@ async function main() {
 
   const adapter = new PrismaPg(pool);
   const prisma = new PrismaClient({ adapter });
+
+  // Generate credentials. API keys are stored hashed; plaintext is printed once below.
+  // Passwords may be supplied via env vars, otherwise a random one is generated.
+  const apiKeys = { LCE: genApiKey("LCE"), MTD: genApiKey("MTD"), PCL: genApiKey("PCL") };
+  const adminPassword = process.env.SEED_ADMIN_PASSWORD || genPassword();
+  const managerPassword = process.env.SEED_MANAGER_PASSWORD || genPassword();
+  const staffPassword = process.env.SEED_STAFF_PASSWORD || genPassword();
 
   // --- Organizations ---
   const org1 = await prisma.organization.upsert({
@@ -45,7 +69,7 @@ async function main() {
       panelsPerDay: 50,
       futureOverheadCost: 3500,
       futurePanelsPerDay: 80,
-      apiKey: "lce-api-key-2026-secret",
+      apiKey: hashApiKey(apiKeys.LCE),
     },
   });
 
@@ -63,7 +87,7 @@ async function main() {
       marginalOverhead: 6.0,
       donationPerPanel: 2.5,
       revenueSharePerPanel: 3.5,
-      apiKey: "mtd-api-key-2026-secret",
+      apiKey: hashApiKey(apiKeys.MTD),
     },
   });
 
@@ -81,7 +105,7 @@ async function main() {
       marginalOverhead: 4.5,
       donationPerPanel: 1.5,
       revenueSharePerPanel: 2.5,
-      apiKey: "pcl-api-key-2026-secret",
+      apiKey: hashApiKey(apiKeys.PCL),
     },
   });
 
@@ -94,7 +118,7 @@ async function main() {
     create: {
       name: "Super Admin",
       email: "admin@pricengine.com",
-      passwordHash: pw("admin123"),
+      passwordHash: pw(adminPassword),
       role: "super_admin",
       orgId: null,
     },
@@ -106,7 +130,7 @@ async function main() {
     create: {
       name: "Dr. James Rivera",
       email: "sarah@labcorp.com",
-      passwordHash: pw("manager123"),
+      passwordHash: pw(managerPassword),
       role: "lab_manager",
       orgId: org1.id,
     },
@@ -118,7 +142,7 @@ async function main() {
     create: {
       name: "Lab Staff",
       email: "staff@labcorp.com",
-      passwordHash: pw("staff123"),
+      passwordHash: pw(staffPassword),
       role: "lab_employee",
       orgId: org1.id,
     },
@@ -130,7 +154,7 @@ async function main() {
     create: {
       name: "Dr. Aisha Patel",
       email: "mike@metro.com",
-      passwordHash: pw("manager123"),
+      passwordHash: pw(managerPassword),
       role: "lab_manager",
       orgId: org2.id,
     },
@@ -142,7 +166,7 @@ async function main() {
     create: {
       name: "Lab Staff",
       email: "staff@metro.com",
-      passwordHash: pw("staff123"),
+      passwordHash: pw(staffPassword),
       role: "lab_employee",
       orgId: org2.id,
     },
@@ -154,7 +178,7 @@ async function main() {
     create: {
       name: "Dr. Michael Tanaka",
       email: "manager@pacific.com",
-      passwordHash: pw("manager123"),
+      passwordHash: pw(managerPassword),
       role: "lab_manager",
       orgId: org3.id,
     },
@@ -252,6 +276,15 @@ async function main() {
   await enableRLS(pool);
 
   console.log("Seed complete: 3 orgs, 6 users, 20 tests, 4 panels, 6 log entries");
+  console.log("\n=== Generated credentials (shown once — store securely) ===");
+  console.log("Super admin (admin@pricengine.com):", adminPassword);
+  console.log("Lab managers:", managerPassword);
+  console.log("Lab staff:   ", staffPassword);
+  console.log("API key LCE:", apiKeys.LCE);
+  console.log("API key MTD:", apiKeys.MTD);
+  console.log("API key PCL:", apiKeys.PCL);
+  console.log("Note: existing rows are not overwritten on re-seed.");
+  console.log("===========================================================\n");
 
   await prisma.$disconnect();
   await pool.end();

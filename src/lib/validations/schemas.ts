@@ -25,7 +25,10 @@ export const excelTestRowSchema = z.object({
 // --- Panel Operations ---
 export const createPanelSchema = z.object({
   name: z.string().min(1, "Panel name is required"),
-  testIds: z.array(z.string().uuid()).min(1, "At least one test is required"),
+  testIds: z
+    .array(z.string().uuid())
+    .min(1, "At least one test is required")
+    .max(100, "A panel may contain at most 100 tests"),
 });
 
 export const updatePanelSchema = createPanelSchema.extend({
@@ -34,7 +37,10 @@ export const updatePanelSchema = createPanelSchema.extend({
 
 // --- Calculator Submission ---
 export const calculatePriceSchema = z.object({
-  testIds: z.array(z.string().uuid()).min(1, "Select at least one test"),
+  testIds: z
+    .array(z.string().uuid())
+    .min(1, "Select at least one test")
+    .max(100, "Select at most 100 tests"),
 });
 
 // --- Analytics Inputs ---
@@ -70,7 +76,10 @@ export const updateOrgSchema = createOrgSchema.extend({
 export const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Valid email is required"),
-  password: z.string().min(6, "Password must be at least 6 characters"),
+  password: z
+    .string()
+    .min(12, "Password must be at least 12 characters")
+    .max(128, "Password must be at most 128 characters"),
   role: z.enum(["lab_manager", "lab_employee"]),
   orgId: z.string().uuid(),
 });
@@ -79,14 +88,17 @@ export const updateUserSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1).optional(),
   email: z.string().email().optional(),
-  password: z.string().min(6).optional(),
+  password: z.string().min(12).max(128).optional(),
   role: z.enum(["lab_manager", "lab_employee"]).optional(),
 });
 
 // --- External API Request ---
 export const apiPricingRequestSchema = z.object({
-  organization: z.string().min(1, "Organization identifier is required"),
-  test_ids: z.array(z.string()).min(1, "test_ids must be a non-empty array"),
+  organization: z.string().min(1, "Organization identifier is required").max(200),
+  test_ids: z
+    .array(z.string().max(200))
+    .min(1, "test_ids must be a non-empty array")
+    .max(100, "test_ids may contain at most 100 entries"),
 });
 
 // --- Login ---

@@ -5,8 +5,13 @@ import { auth } from "@/lib/auth/config";
 import { createOrgSchema, updateOrgSchema, createUserSchema, updateUserSchema } from "@/lib/validations/schemas";
 import { hashSync } from "bcryptjs";
 import { revalidatePath } from "next/cache";
-import crypto from "crypto";
+import { generateApiKey, hashApiKey } from "@/lib/auth/api-key";
 import { formatError } from "./utils";
+
+function stripApiKey<T extends { apiKey: string | null }>(org: T) {
+  const { apiKey, ...rest } = org;
+  return { ...rest, hasApiKey: apiKey !== null };
+}
 
 async function getAdminSession() {
   const session = await auth();
@@ -27,6 +32,7 @@ export async function createOrganization(data: {
     await getAdminSession();
     const parsed = createOrgSchema.parse(data);
 
+    const plainApiKey = generateApiKey(parsed.code);
     const org = await prisma.organization.create({
       data: {
         name: parsed.name,
@@ -34,12 +40,12 @@ export async function createOrganization(data: {
         contactEmail: parsed.contactEmail || null,
         phone: parsed.phone || null,
         address: parsed.address || null,
-        apiKey: `${parsed.code.toLowerCase()}-${crypto.randomBytes(16).toString("hex")}`,
+        apiKey: hashApiKey(plainApiKey),
       },
     });
 
     revalidatePath("/dashboard/admin");
-    return { success: true as const, org };
+    return { success: true as const, org: stripApiKey(org), apiKey: plainApiKey };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
@@ -69,7 +75,7 @@ export async function updateOrganization(data: {
     });
 
     revalidatePath("/dashboard/admin");
-    return { success: true as const, org };
+    return { success: true as const, org: stripApiKey(org) };
   } catch (e) {
     return { success: false as const, error: formatError(e) };
   }
@@ -169,9 +175,9 @@ export async function regenerateApiKey(orgId: string) {
     await getAdminSession();
 
     const org = await prisma.organization.findUniqueOrThrow({ where: { id: orgId }, select: { code: true } });
-    const newKey = `${org.code.toLowerCase()}-${crypto.randomBytes(16).toString("hex")}`;
+    const newKey = generateApiKey(org.code);
 
-    await prisma.organization.update({ where: { id: orgId }, data: { apiKey: newKey } });
+    await prisma.organization.update({ where: { id: orgId }, data: { apiKey: hashApiKey(newKey) } });
 
     revalidatePath("/dashboard/admin");
     return { success: true as const, apiKey: newKey };

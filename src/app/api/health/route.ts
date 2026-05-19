@@ -6,11 +6,8 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    return NextResponse.json({ status: "healthy", database: "connected" });
+    return NextResponse.json({ status: "ok" });
   } catch {
-    return NextResponse.json(
-      { status: "unhealthy", database: "disconnected" },
-      { status: 503 }
-    );
+    return new NextResponse(null, { status: 503 });
   }
 }

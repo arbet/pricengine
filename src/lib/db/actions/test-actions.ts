@@ -100,6 +100,20 @@ export async function uploadTestCatalog(formData: FormData) {
     const file = formData.get("file") as File;
     if (!file) return { success: false as const, errors: [{ row: 0, message: "No file provided" }] };
 
+    const MAX_FILE_BYTES = 5 * 1024 * 1024;
+    const MAX_ROWS = 5000;
+    const ALLOWED_TYPES = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+    ];
+
+    if (file.size > MAX_FILE_BYTES) {
+      return { success: false as const, errors: [{ row: 0, message: "File exceeds the 5 MB limit" }] };
+    }
+    if (file.type && !ALLOWED_TYPES.includes(file.type)) {
+      return { success: false as const, errors: [{ row: 0, message: "Unsupported file type — upload an .xlsx spreadsheet" }] };
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const workbook = new ExcelJS.Workbook();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -107,6 +121,10 @@ export async function uploadTestCatalog(formData: FormData) {
 
     const worksheet = workbook.worksheets[0];
     if (!worksheet) return { success: false as const, errors: [{ row: 0, message: "No worksheet found" }] };
+
+    if (worksheet.rowCount > MAX_ROWS + 1) {
+      return { success: false as const, errors: [{ row: 0, message: `File exceeds the ${MAX_ROWS}-row limit` }] };
+    }
 
     const errors: { row: number; message: string }[] = [];
     const rows: { testId: string; name: string; reagentCost: number; listPrice: number; category: string }[] = [];

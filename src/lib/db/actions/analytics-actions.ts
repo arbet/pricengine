@@ -2,7 +2,7 @@
 
 import { prisma } from "@/lib/db/client";
 import { auth } from "@/lib/auth/config";
-import { overheadSettingsSchema } from "@/lib/validations/schemas";
+import { analyticsInputSchema, overheadSettingsSchema } from "@/lib/validations/schemas";
 import { calculatePanelPrice, calculateAnalytics, PricingConfig, PricingTestInput } from "@/lib/pricing";
 import { revalidatePath } from "next/cache";
 import { formatError } from "./utils";
@@ -25,9 +25,10 @@ export async function analyzePanel(data: {
 }) {
   try {
     const user = await getManagerSession();
+    const parsed = analyticsInputSchema.parse(data);
 
     const panel = await prisma.panel.findUnique({
-      where: { id: data.panelId },
+      where: { id: parsed.panelId },
       include: { panelTests: { include: { test: true } } },
     });
 
@@ -54,10 +55,10 @@ export async function analyzePanel(data: {
 
     const pricingResult = calculatePanelPrice(testInputs, config);
     const analyticsResult = calculateAnalytics(pricingResult, {
-      currentDailyOverhead: data.currentDailyOverhead,
-      currentPanelsPerDay: data.currentPanelsPerDay,
-      futureDailyOverhead: data.futureDailyOverhead,
-      futurePanelsPerDay: data.futurePanelsPerDay,
+      currentDailyOverhead: parsed.currentDailyOverhead,
+      currentPanelsPerDay: parsed.currentPanelsPerDay,
+      futureDailyOverhead: parsed.futureDailyOverhead,
+      futurePanelsPerDay: parsed.futurePanelsPerDay,
     });
 
     return { success: true as const, pricingResult, analyticsResult };

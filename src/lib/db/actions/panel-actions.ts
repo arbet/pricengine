@@ -14,10 +14,22 @@ async function getSession() {
   return user;
 }
 
+async function assertTestsOwnedByOrg(testIds: string[], orgId: string) {
+  const owned = await prisma.labTest.findMany({
+    where: { id: { in: testIds }, orgId },
+    select: { id: true },
+  });
+  if (owned.length !== new Set(testIds).size) {
+    throw new Error("Invalid test selection");
+  }
+}
+
 export async function createPanel(data: { name: string; testIds: string[] }) {
   try {
     const user = await getSession();
     const parsed = createPanelSchema.parse(data);
+
+    await assertTestsOwnedByOrg(parsed.testIds, user.orgId);
 
     const panel = await prisma.panel.create({
       data: {
@@ -52,6 +64,8 @@ export async function updatePanel(data: {
     if (!existing || existing.orgId !== user.orgId) {
       throw new Error("Panel not found");
     }
+
+    await assertTestsOwnedByOrg(parsed.testIds, user.orgId);
 
     await prisma.panelTest.deleteMany({ where: { panelId: parsed.id } });
 

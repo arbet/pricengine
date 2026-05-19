@@ -30,12 +30,8 @@ export async function withOrgScope<T>(
 ): Promise<T> {
   const client = getPrismaClient();
   return client.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(
-      `SET LOCAL app.current_org_id = '${orgId}'`
-    );
-    await tx.$executeRawUnsafe(
-      `SET LOCAL app.current_role = '${role}'`
-    );
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', ${orgId}, true)`;
+    await tx.$executeRaw`SELECT set_config('app.current_role', ${role}, true)`;
     return fn(tx as unknown as PrismaClient);
   }) as T;
 }
@@ -48,12 +44,8 @@ export async function withAdminScope<T>(
 ): Promise<T> {
   const client = getPrismaClient();
   return client.$transaction(async (tx) => {
-    await tx.$executeRawUnsafe(
-      `SET LOCAL app.current_role = 'super_admin'`
-    );
-    await tx.$executeRawUnsafe(
-      `SET LOCAL app.current_org_id = ''`
-    );
+    await tx.$executeRaw`SELECT set_config('app.current_role', 'super_admin', true)`;
+    await tx.$executeRaw`SELECT set_config('app.current_org_id', '', true)`;
     return fn(tx as unknown as PrismaClient);
   }) as T;
 }

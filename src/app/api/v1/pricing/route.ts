@@ -3,9 +3,28 @@ import { prisma } from "@/lib/db/client";
 import { validateApiKey } from "@/lib/auth/api-key";
 import { apiPricingRequestSchema } from "@/lib/validations/schemas";
 import { calculatePanelPrice, PricingConfig, PricingTestInput } from "@/lib/pricing";
+import { rateLimit, clientIp } from "@/lib/rate-limit";
+
+const IP_LIMIT = 60;
+const ORG_LIMIT = 120;
+const WINDOW_MS = 60_000;
+
+function tooManyRequests(retryAfterSeconds: number) {
+  return NextResponse.json(
+    { error: "rate_limited", message: "Too many requests" },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } }
+  );
+}
 
 export async function POST(request: NextRequest) {
   try {
+    // Rate limit by client IP (guards against API-key brute force / DoS)
+    const ip = clientIp(request.headers);
+    const ipLimit = rateLimit(`pricing:ip:${ip}`, IP_LIMIT, WINDOW_MS);
+    if (!ipLimit.allowed) {
+      return tooManyRequests(ipLimit.retryAfterSeconds);
+    }
+
     // Authenticate via API key
     const org = await validateApiKey(request.headers.get("authorization"));
     if (!org) {
@@ -13,6 +32,12 @@ export async function POST(request: NextRequest) {
         { error: "unauthorized", message: "Invalid or missing API key" },
         { status: 401 }
       );
+    }
+
+    // Rate limit by authenticated organization
+    const orgLimit = rateLimit(`pricing:org:${org.id}`, ORG_LIMIT, WINDOW_MS);
+    if (!orgLimit.allowed) {
+      return tooManyRequests(orgLimit.retryAfterSeconds);
     }
 
     // Parse and validate request body
